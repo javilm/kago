@@ -1,11 +1,16 @@
 ; kago.as - KAGO, the compressor. It writes LZH and ZIP archives, every
 ; member stored, of the files and directory trees named on the command
-; line.
+; line, and with /A adds to an LZH archive that is there.
 ;
 ; It checks for MSX-DOS2 and the command line, and chooses the format:
 ; /F: names it, or the archive's extension does. LZH and ZIP are
 ; written; PMA says so. The archive is created new: one that exists
-; already is refused. Each word after the archive's name is a file, *
+; already is refused, unless /A asks to add to it (open_old). Then the
+; archive is made again as a temporary file beside it: the old members
+; are copied first, byte for byte, but for those a file named replaces
+; (copy_old); then the files; then the old archive is deleted, and the
+; new one renamed into its place. Each word after the archive's name is
+; a file, *
 ; and ? allowed, found with MSX-DOS2's _FFIRST and _FNEXT; each file
 ; found is added, its path as typed less the drive (word_dirs), its
 ; date, time and attributes, its data stored and its CRC computed on
@@ -25,6 +30,7 @@
 		include	zipw.inc	; zipw.as: ZIP's headers
 		include	progress.inc	; progress.as: the progress line
 		include	seglist.inc	; seglist.as: lists in the mapper
+		include	lzh.inc		; lzh.as: reading the old archive
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .NOFIL...
@@ -45,6 +51,8 @@ MAX_DEPTH	equ	32		; add_tree's depth: MSX-DOS2's paths
 FORMAT_LZH	equ	0		; format_name's answers
 FORMAT_PMA	equ	1
 FORMAT_ZIP	equ	2
+MARK_ADDED	equ	1		; a path's marks in path_list: added
+MARK_OLD	equ	2		;   in this run; in the old archive
 
 		cseg
 
@@ -57,8 +65,14 @@ FORMAT_ZIP	equ	2
 ;   Then the archive: the first word that is not a switch, and its
 ;   format (archive_format). With no archive named, the usage; with no
 ;   file named after it, .NOPAR (*** Missing parameter). The words after
-;   it are added one by one (add_word). An LZH archive ends with a 0
+;   it are added one by one (add_words). An LZH archive ends with a 0
 ;   byte; a ZIP archive with its central directory and end record.
+;
+;   With /A and an archive there, the words are walked twice: first only
+;   for their paths (collecting), so that copy_old knows which old
+;   members to leave out; then to add them. At the end the old archive
+;   is deleted, and the new one, written as temp_name, renamed into its
+;   place; if either fails, the new one is left, and KAGO says where.
 ;
 ; Input:	the command line, at COMMAND_TAIL (common.as)
 ; Output:	does not return
@@ -92,15 +106,16 @@ main.archive:
 		ldir
 		xor	a
 		ld	(de),a
-		ld	(word_at),hl	; HL -> just after it
-		call	archive_format	; returns only for LZH
-		ld	de,(word_at)
+		ld	(files_at),hl	; HL -> just after it: the files
+		call	archive_format	; returns only for LZH and ZIP
+		ld	de,(files_at)
 		call	next_argument	; A = 0: no file named
 		or	a
 		jr	nz,main.files
 		ld	b,.NOPAR	; COMMAND2: *** Missing parameter
 		dos	_TERM
 main.files:
+		call	open_old	; /A and an archive there: opened
 		call	create_archive	; returns only if it was
 		call	progress_init	; on the screen, not with /Q
 		ld	hl,adding_line	; what the line starts with
@@ -108,25 +123,22 @@ main.files:
 		call	crc_tables	; CRC-16's table, or CRC-32's
 		ld	hl,0
 		ld	(added),hl
-main.word:
-		ld	de,(word_at)
-		call	next_argument	; HL -> it, B = its length
+		ld	a,(appending)
 		or	a
-		jr	z,main.done
-		ld	(word_at),de
-		ld	de,spec_text	; B bytes from HL, then a 0
-		ld	c,b
-		ld	b,0
-		ldir
+		jr	z,main.add
+		inc	a		; /A: the paths to be added, first
+		ld	(collecting),a
+		call	add_words
 		xor	a
-		ld	(de),a
-		call	add_word
-		jr	main.word
+		ld	(collecting),a
+		call	copy_old	; the old members kept
+main.add:
+		call	add_words
 main.done:
 		ld	hl,(added)
 		ld	a,h
 		or	l
-		jr	z,main.nothing
+		jp	z,main.nothing	; too far for jr
 		ld	a,(out_format)
 		or	a
 		jr	nz,main.central
@@ -161,17 +173,49 @@ main.close:
 		dos	_CLOSE
 		or	a
 		jp	nz,fail_closed
+		ld	a,(appending)
+		or	a
+		jr	nz,main.replace
 		dos	_TERM0
-main.nothing:
-		ld	a,(archive_handle)	; nothing added: no archive
+main.replace:
+		ld	a,(lzh_handle)	; /A: the old archive closed, deleted
 		ld	b,a
 		dos	_CLOSE
 		ld	de,archive_name
 		dos	_DELETE
+		or	a
+		jr	nz,main.left
+		ld	de,temp_name	; and the new one in its place
+		ld	hl,old_entry
+		dos	_RENAME
+		or	a
+		jr	nz,main.left
+		dos	_TERM0
+main.left:
+		push	af		; A = why: the new one is left as it is
+		print	msg_left
+		ld	de,temp_name
+		call	print_zero
+		print	msg_crlf
+		pop	af
+		ld	b,a
+		dos	_TERM
+main.nothing:
+		ld	a,(archive_handle)	; nothing added: no archive
+		ld	b,a
+		dos	_CLOSE
+		ld	de,(write_name)
+		dos	_DELETE
 		print	msg_nothing
 		ld	de,archive_name
 		call	print_zero
-		print	msg_not_written
+		ld	de,msg_not_written
+		ld	a,(appending)	; /A: the old one is as it was
+		or	a
+		jr	z,main.said
+		ld	de,msg_not_changed
+main.said:
+		dos	_STROUT
 		dos	_TERM0
 
 main.usage:
@@ -307,14 +351,15 @@ format_name.no:
 ; create_archive - create the archive, new, and find out where it is.
 ;
 ;   _CREATE's "create new" flag refuses an archive that exists, with
-;   .FILEX, which is said in KAGO's own words; any other error ends the
+;   .FILEX, which is said in KAGO's own words, the name write_name's: the
+;   archive's, or with /A the temporary file's; any other error ends the
 ;   program with its code. Then a byte is written and the archive is
 ;   flushed (_ENSURE), so that its directory entry has a first cluster:
 ;   that cluster, the drive and the name tell it apart from every other
 ;   file, should a name typed after it match it (add_entry). The byte
 ;   is written over later.
 ;
-; Input:	archive_name
+; Input:	write_name -> the name
 ; Output:	returns only if the archive was created
 ;		archive_handle, archive_drive, archive_cluster,
 ;		archive_entry
@@ -329,7 +374,7 @@ format_name.no:
 create_archive:
 		ld	a,0FFh
 		ld	(in_handle),a
-		ld	de,archive_name
+		ld	de,(write_name)
 		xor	a		; open mode: read and write
 		ld	b,80h		; create new
 		dos	_CREATE		; B = the handle
@@ -337,7 +382,7 @@ create_archive:
 		jr	z,create_archive.created
 		cp	.FILEX
 		jr	nz,create_archive.error
-		ld	de,archive_name	; it exists
+		ld	de,(write_name)	; it exists
 		call	print_zero
 		print	msg_exists
 		dos	_TERM0
@@ -355,7 +400,7 @@ create_archive.created:
 		dos	_ENSURE		; its directory entry, written
 		or	a
 		jp	nz,fail
-		ld	de,archive_name
+		ld	de,(write_name)
 		ld	b,06h		; hidden and system ones too
 		ld	ix,fib
 		dos	_FFIRST
@@ -411,6 +456,11 @@ add_word.entry:
 		ret	z		; no more
 		jp	fail
 add_word.none:
+		ld	b,a
+		ld	a,(collecting)	; /A's first walk says nothing
+		or	a
+		ret	nz
+		ld	a,b
 		push	af
 		print	msg_skipping
 		ld	de,spec_text
@@ -421,6 +471,9 @@ add_word.none:
 		print	msg_crlf
 		ret
 add_word.refused:
+		ld	a,(collecting)	; /A's first walk says nothing
+		or	a
+		ret	nz
 		print	msg_skipping
 		ld	de,spec_text
 		call	print_zero
@@ -429,9 +482,10 @@ add_word.refused:
 
 ; add_entry - add the entry just found.
 ;
-;   "." and "..", and the archive itself, are passed over without a
-;   line; a directory is added whole (add_tree). A file added already in
-;   this run says so, and is not added again. A file is opened
+;   "." and "..", the archive itself and the one /A adds to are passed
+;   over without a line; a directory is added whole (add_tree). In /A's
+;   first walk, only its path is kept (path_collect). A file added
+;   already in this run says so, and is not added again. A file is opened
 ;   through its FIB; its header is written as far as it is known (the
 ;   CRC still 0), then its data, COPY_SIZE bytes at a time, the CRC
 ;   computed and the bytes counted on the way; then the header again,
@@ -449,28 +503,20 @@ add_entry:
 		ld	a,(fib+FIB_ATTRIBUTES)
 		and	10h		; a directory
 		jp	nz,add_entry.directory	; too far for jr
-		ld	a,(archive_drive)	; the archive itself?
-		ld	hl,fib+FIB_DRIVE
-		cp	(hl)
-		jr	nz,add_entry.file
-		ld	hl,(fib+FIB_CLUSTER)
-		ld	de,(archive_cluster)
+		ld	hl,archive_drive	; the archive being written?
+		call	same_file
+		ret	z		; it is: passed over
+		ld	a,(appending)	; the one /A adds to?
 		or	a
-		sbc	hl,de
-		jr	nz,add_entry.file
-		ld	hl,fib+FIB_NAME
-		ld	de,archive_entry
-add_entry.same:
-		ld	a,(de)
-		cp	(hl)
-		jr	nz,add_entry.file
-		inc	hl
-		inc	de
-		or	a
-		jr	nz,add_entry.same
-		ret			; it is: passed over
+		jr	z,add_entry.file
+		ld	hl,old_drive
+		call	same_file
+		ret	z
 add_entry.file:
 		call	entry_path	; lzhw_path, lzhw_length
+		ld	a,(collecting)	; /A's first walk: the path only
+		or	a
+		jp	nz,path_collect
 		call	path_check	; CY: added already
 		jp	c,already
 		call	entry_details	; the size, for the line and for now
@@ -486,8 +532,7 @@ add_entry.file:
 		ld	a,b
 		ld	(in_handle),a
 		call	write_header	; as far as it is known
-		print	msg_adding
-		call	print_member
+		call	adding_line	; Adding, or Replacing, and the path
 		ld	hl,(lzhw_size)
 		ld	de,(lzhw_size+2)
 		call	progress_start	; "   0%", on the screen
@@ -590,6 +635,12 @@ add_tree:
 		push	af
 		ld	a,l		; all of it directories now
 		ld	(lzhw_dir),a
+		ld	a,(collecting)	; /A's first walk: the path only
+		or	a
+		jr	z,add_tree.check
+		call	path_collect
+		jr	add_tree.inside
+add_tree.check:
 		call	path_check	; CY: added already
 		jr	nc,add_tree.new
 		call	already		; but what is in it may not be
@@ -602,8 +653,7 @@ add_tree.new:
 		ldir
 		call	write_header	; no data: written once
 		call	keep_member	; ZIP: its central record
-		print	msg_adding
-		call	print_member
+		call	adding_line
 		print	msg_ok
 		ld	hl,(added)
 		inc	hl
@@ -722,18 +772,22 @@ keep_member:
 		ret	nc
 		jp	no_memory
 
-; path_check - whether the member's path was added already in this run;
-;   if not, it is kept, so that it will be.
+; path_check - whether the member's path was added already in this run,
+;   and which word its line starts with.
 ;
-;   The paths added are kept in path_list, a list of records in mapper
-;   segments (seglist.as), each its length, then the path. All of them
-;   come from MSX-DOS2's names and the word's directories, folded to
-;   upper case, with "\" between parts, so they are compared byte for
-;   byte. A file named twice, by two words or by a word and a directory
-;   above it, is added once.
+;   The paths are kept in path_list, a list of records in mapper
+;   segments (seglist.as): each its length, its marks, then the path.
+;   All of them come from MSX-DOS2's names and the word's directories,
+;   folded to upper case, with "\" between parts, so they are compared
+;   byte for byte. A path already marked MARK_ADDED is a file named
+;   twice: it is added once. One there unmarked, kept by /A's first walk
+;   (path_collect), is marked now; if the old archive had it too
+;   (path_mark_old), its line says "Replacing". One not there is kept,
+;   marked.
 ;
 ; Input:	lzhw_path, lzhw_length
-; Output:	CY set = it was added already: nothing kept
+; Output:	CY set = it was added already
+;		line_word -> msg_adding, or msg_replacing
 ;		returns only if it could be kept (no_memory)
 ; Modifies:	AF
 ;		BC
@@ -742,17 +796,87 @@ keep_member:
 ; Scratch:	none
 
 path_check:
-		call	path_seen	; CY: added already
-		ret	c
-		ld	a,(lzhw_length)	; the record: the length, the path
+		ld	hl,msg_adding
+		ld	(line_word),hl
+		call	path_seen	; CY: HL -> its record, in page 2
+		jr	nc,path_check.new
+		inc	hl		; its marks
+		ld	a,(hl)
+		bit	0,a		; MARK_ADDED: added already
+		scf
+		ret	nz
+		or	MARK_ADDED
+		ld	(hl),a
+		and	MARK_OLD	; CY clear
+		ret	z
+		ld	hl,msg_replacing	; the old archive had it
+		ld	(line_word),hl
+		ret
+path_check.new:
+		ld	a,MARK_ADDED
+		jp	path_keep
+
+; path_collect - /A's first walk: the path kept, unmarked, if it is
+;   not there already.
+;
+; Input:	lzhw_path, lzhw_length
+; Output:	path_list
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+path_collect:
+		call	path_seen
+		ret	c		; named twice: once is enough
+		xor	a		; no marks
+		jp	path_keep
+
+; path_mark_old - whether an old member's path will be added: if so,
+;   it is marked MARK_OLD, and the member is not copied.
+;
+; Input:	lzhw_path, lzhw_length: the old member's, as old_path
+;		made it
+; Output:	CY set = it will be added: the old member is replaced
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+path_mark_old:
+		call	path_seen	; CY: HL -> its record, in page 2
+		ret	nc
+		inc	hl
+		ld	a,(hl)
+		or	MARK_OLD
+		ld	(hl),a
+		scf
+		ret
+
+; path_keep - the member's path, kept in path_list with marks A.
+;
+; Input:	A = the marks
+;		lzhw_path, lzhw_length
+; Output:	returns only if it could be kept (no_memory); CY clear
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+path_keep:
+		ld	(path_record+1),a	; the record: the length, the
+		ld	a,(lzhw_length)	;   marks, the path
 		ld	(path_record),a
 		ld	c,a
 		ld	b,0
 		ld	hl,lzhw_path
-		ld	de,path_record+1
+		ld	de,path_record+2
 		ldir
 		ld	a,(lzhw_length)
-		inc	a
+		add	a,2
 		ld	c,a
 		ld	de,path_list
 		ld	hl,path_record
@@ -764,11 +888,12 @@ path_check:
 ;
 ;   Each segment, in page 2, is walked record by record: a length that
 ;   differs moves on at once. Nothing calls MSX-DOS while a segment is
-;   mapped. A known ceiling: n members take n x n / 2 comparisons; a
-;   hash table is the way on, if an archive ever makes it matter.
+;   mapped, and the record found is left mapped for the caller. A known
+;   ceiling: n members take n x n / 2 comparisons; a hash table is the
+;   way on, if an archive ever makes it matter.
 ;
 ; Input:	lzhw_path, lzhw_length; path_list
-; Output:	CY set = it is
+; Output:	CY set = it is, and HL -> its record, in page 2
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -798,6 +923,7 @@ path_seen.record:
 		jr	nz,path_seen.skip
 		push	de
 		push	hl
+		inc	hl		; past the length and the marks
 		inc	hl
 		ld	de,lzhw_path
 		ld	b,a
@@ -816,8 +942,8 @@ path_seen.differ:
 		pop	hl
 		pop	de
 path_seen.skip:
-		ld	a,(hl)		; past it: its length, and 1
-		inc	a
+		ld	a,(hl)		; past it: its length, and 2
+		add	a,2
 		add	a,l
 		ld	l,a
 		jr	nc,path_seen.record
@@ -969,6 +1095,421 @@ fib_slot:
 		ld	de,fib_stack
 		add	hl,de
 		ret
+
+; add_words - add the files every word after the archive's name names.
+;
+; Input:	files_at: where the words start
+; Output:	each word, through add_word
+; Modifies:	everything
+; Scratch:	none
+
+add_words:
+		ld	hl,(files_at)
+		ld	(word_at),hl
+add_words.next:
+		ld	de,(word_at)
+		call	next_argument	; HL -> it, B = its length
+		or	a
+		ret	z
+		ld	(word_at),de
+		ld	de,spec_text	; B bytes from HL, then a 0
+		ld	c,b
+		ld	b,0
+		ldir
+		xor	a
+		ld	(de),a
+		call	add_word
+		jr	add_words.next
+
+; open_old - with /A, the archive there is to add to.
+;
+;   Without /A, or with no archive by that name, the archive is made
+;   new, as before (write_name = archive_name). With one there: ZIP is
+;   not added to yet; an LZH archive is opened through lzh.as, and its
+;   first header is read, or none at all, so that one that is not LZH,
+;   or is damaged, is refused before anything is written. Its drive,
+;   first cluster and name are kept, as create_archive keeps the new
+;   archive's, so that a word that names it passes it over. The new
+;   archive is written as a temporary file beside it (make_temp).
+;
+; Input:	archive_name, out_format; the command line
+; Output:	returns only if the archive is to be made new or added to
+;		write_name: the file to write
+;		appending: not 0 when adding to an archive
+;		old_drive, old_cluster, old_entry; temp_name
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+open_old:
+		ld	hl,archive_name
+		ld	(write_name),hl
+		ld	c,"A"
+		call	switch_given	; CY set: /A
+		ret	nc
+		ld	de,archive_name	; is it there?
+		ld	b,06h		; hidden and system ones too
+		ld	ix,fib
+		dos	_FFIRST
+		or	a
+		ret	nz		; no: it is made new
+		ld	a,(out_format)
+		or	a
+		jr	z,open_old.lzh
+		print	msg_no_zip_add	; note 024
+		dos	_TERM0
+open_old.lzh:
+		ld	a,(fib+FIB_DRIVE)	; its drive, cluster and name
+		ld	(old_drive),a
+		ld	hl,(fib+FIB_CLUSTER)
+		ld	(old_cluster),hl
+		ld	hl,fib+FIB_NAME
+		ld	de,old_entry
+		ld	bc,13
+		ldir
+		ld	de,archive_name
+		call	lzh_open	; A = 0, or an MSX-DOS error
+		or	a
+		jr	nz,open_old.error
+		call	lzh_next_header	; a member, or the end
+		cp	LZH_END
+		jr	z,open_old.ok
+		or	a		; LZH_MEMBER
+		jr	z,open_old.ok
+		cp	80h
+		jr	nc,open_old.error	; an MSX-DOS error
+		ld	de,archive_name	; not LZH, or damaged
+		call	print_zero
+		print	msg_not_lzh
+		dos	_TERM0
+open_old.error:
+		ld	b,a
+		dos	_TERM
+open_old.ok:
+		call	make_temp
+		ld	hl,temp_name
+		ld	(write_name),hl
+		ld	a,1
+		ld	(appending),a
+		ret
+
+; make_temp - the temporary file's name: in the archive's directory,
+;   the archive's name with ".$$$" for its extension.
+;
+;   The directory is what archive_name has before its last "\" or ":",
+;   the second byte of a two-byte character never taken for a "\"; the
+;   name is MSX-DOS2's, old_entry, up to its ".".
+;
+; Input:	archive_name, old_entry
+; Output:	temp_name
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+make_temp:
+		ld	hl,archive_name	; DE -> after the last "\" or ":"
+		ld	d,h
+		ld	e,l
+make_temp.scan:
+		ld	a,(hl)
+		or	a
+		jr	z,make_temp.dirs
+		inc	hl
+		call	kanji_lead	; CY: a pair, so its second byte too
+		jr	c,make_temp.pair
+		cp	PATH_SEPARATOR
+		jr	z,make_temp.after
+		cp	":"
+		jr	nz,make_temp.scan
+make_temp.after:
+		ld	d,h
+		ld	e,l
+		jr	make_temp.scan
+make_temp.pair:
+		ld	a,(hl)
+		or	a
+		jr	z,make_temp.dirs
+		inc	hl
+		jr	make_temp.scan
+make_temp.dirs:
+		ex	de,hl		; BC = the directory's length
+		ld	de,archive_name
+		or	a
+		sbc	hl,de
+		ld	b,h
+		ld	c,l
+		ld	hl,archive_name
+		ld	de,temp_name
+		ld	a,b
+		or	c
+		jr	z,make_temp.base	; none
+		ldir
+make_temp.base:
+		ld	hl,old_entry
+make_temp.char:
+		ld	a,(hl)
+		or	a
+		jr	z,make_temp.ext
+		cp	"."
+		jr	z,make_temp.ext
+		ld	(de),a
+		inc	hl
+		inc	de
+		jr	make_temp.char
+make_temp.ext:
+		ld	hl,temp_ext	; ".$$$" and a 0
+		ld	bc,5
+		ldir
+		ret
+
+; copy_old - the old archive's members, all but those to be replaced,
+;   into the new one, byte for byte.
+;
+;   For each member: where its header starts, then the header (lzh.as),
+;   then where its data starts: the header's length and the data's are
+;   what is copied, from where the header starts (copy_range), so any
+;   level and any method goes across as it was. Its path, as KAGO writes
+;   paths (old_path), is looked up in path_list: one that will be added
+;   is marked as replacing (path_mark_old), and the member's data is
+;   skipped. A damaged archive stops, the new one deleted and the old
+;   one as it was (old_bad).
+;
+; Input:	the old archive, open (lzh.as); path_list, from the first
+;		walk
+; Output:	the members kept, written
+; Modifies:	everything
+; Scratch:	none
+
+copy_old:
+		call	lzh_rewind
+		or	a
+		jp	nz,fail
+copy_old.next:
+		ld	a,1		; where this header starts
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	lzh_seek	; DE:HL = here
+		or	a
+		jp	nz,fail
+		ld	(old_at),hl
+		ld	(old_at+2),de
+		call	lzh_next_header
+		cp	LZH_END
+		ret	z		; all of them
+		or	a
+		jp	nz,old_bad
+		ld	a,1		; where its data starts
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	lzh_seek
+		or	a
+		jp	nz,fail
+		ld	bc,(old_at)	; less where it started: the header
+		or	a
+		sbc	hl,bc
+		ex	de,hl
+		ld	bc,(old_at+2)
+		sbc	hl,bc
+		ex	de,hl
+		ld	bc,(lzh_packed)	; and the data
+		add	hl,bc
+		ex	de,hl
+		ld	bc,(lzh_packed+2)
+		adc	hl,bc
+		ex	de,hl
+		ld	(old_len),hl
+		ld	(old_len+2),de
+		call	old_path	; CY: too long for any path KAGO makes
+		jr	c,copy_old.keep
+		call	path_mark_old	; CY: it is to be replaced
+		jr	nc,copy_old.keep
+		call	lzh_skip_data	; A = 0, or what stops it
+		or	a
+		jp	nz,old_bad
+		jr	copy_old.next
+copy_old.keep:
+		call	copy_range	; to the next header
+		jr	copy_old.next
+
+; copy_range - old_len bytes of the old archive, from old_at, into the
+;   new one, COPY_SIZE bytes at a time.
+;
+; Input:	old_at, old_len
+; Output:	they are written; the old archive is just after them
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+copy_range:
+		xor	a		; from old_at
+		ld	hl,(old_at)
+		ld	de,(old_at+2)
+		call	lzh_seek
+		or	a
+		jp	nz,fail
+copy_range.chunk:
+		ld	hl,(old_len+2)
+		ld	a,h
+		or	l
+		ld	hl,COPY_SIZE
+		jr	nz,copy_range.sized	; 64 KB or more left
+		ld	de,(old_len)
+		ld	a,d
+		or	e
+		ret	z		; nothing left
+		ex	de,hl		; HL = what is left, DE = COPY_SIZE
+		or	a
+		sbc	hl,de
+		add	hl,de
+		jr	c,copy_range.sized	; less: all of it
+		ex	de,hl		; HL = COPY_SIZE
+copy_range.sized:
+		ld	(chunk),hl
+		ld	de,copy_buffer
+		call	lzh_read	; A = 0, LZH_TRUNCATED or an error
+		or	a
+		jp	nz,old_bad
+		ld	de,copy_buffer
+		ld	hl,(chunk)
+		call	archive_write
+		ld	hl,(old_len)	; old_len -= chunk
+		ld	de,(chunk)
+		or	a
+		sbc	hl,de
+		ld	(old_len),hl
+		ld	hl,(old_len+2)
+		ld	de,0
+		sbc	hl,de
+		ld	(old_len+2),hl
+		jr	copy_range.chunk
+
+; old_bad - stop: the old archive is damaged, or cut short.
+;
+;   An MSX-DOS error goes to fail as it is. Otherwise KAGO says so, and
+;   stops through fail with no error of its own: the new archive, a
+;   temporary file, is deleted, and the old one is left as it was.
+;
+; Input:	A = an LZH result (lzh.inc), or an MSX-DOS error code
+; Output:	does not return
+; Modifies:	everything
+; Scratch:	none
+
+old_bad:
+		cp	80h
+		jp	nc,fail		; an MSX-DOS error
+		ld	de,archive_name
+		call	print_zero
+		print	msg_not_lzh
+		xor	a		; no MSX-DOS error
+		jp	fail
+
+; old_path - an old member's path, as KAGO writes paths, in lzhw_path.
+;
+;   lzh.as has cleaned it: "\" between parts, the case as it was stored.
+;   It is folded to upper case, the second byte of a two-byte character
+;   left as it is, and a directory's gets its "\", so that path_seen can
+;   compare it byte for byte. One of 140 bytes or more is no path KAGO
+;   makes: it is kept, not looked up.
+;
+; Input:	lzh_name, lzh_name_length, lzh_dir (lzh.as)
+; Output:	CY set = too long: not looked up
+;		lzhw_path, lzhw_length
+; Modifies:	AF
+;		B
+;		DE
+;		HL
+; Scratch:	none
+
+old_path:
+		ld	a,(lzh_name_length)	; under 140 bytes?
+		cp	140
+		ccf
+		ret	c
+		ld	b,a
+		ld	hl,lzh_name
+		ld	de,lzhw_path
+		or	a
+		jr	z,old_path.dir	; empty
+old_path.byte:
+		ld	a,(hl)
+		inc	hl
+		call	kanji_lead	; CY: a pair, its second byte as it is
+		jr	c,old_path.pair
+		call	fold_case
+old_path.put:
+		ld	(de),a
+		inc	de
+		djnz	old_path.byte
+		jr	old_path.dir
+old_path.pair:
+		ld	(de),a
+		inc	de
+		dec	b
+		jr	z,old_path.dir
+		ld	a,(hl)
+		inc	hl
+		jr	old_path.put
+old_path.dir:
+		ld	a,(lzh_dir)	; a directory: its "\"
+		or	a
+		jr	z,old_path.length
+		ld	a,PATH_SEPARATOR
+		ld	(de),a
+		inc	de
+old_path.length:
+		ex	de,hl
+		ld	de,lzhw_path
+		or	a
+		sbc	hl,de
+		ld	(lzhw_length),hl
+		ret			; CY clear from the SBC
+
+; same_file - whether the entry just found is a file KAGO is writing or
+;   reading.
+;
+; Input:	fib: the entry
+;		HL -> a drive, a first cluster and a name, as MSX-DOS2's
+;		FIB has them: archive_drive..., or old_drive...
+; Output:	Z set = it is that file
+; Modifies:	AF
+;		DE
+;		HL
+; Scratch:	none
+
+same_file:
+		ld	a,(fib+FIB_DRIVE)
+		cp	(hl)
+		ret	nz
+		inc	hl
+		ld	e,(hl)		; DE = its first cluster
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		push	hl
+		ld	hl,(fib+FIB_CLUSTER)
+		or	a
+		sbc	hl,de
+		pop	de		; DE -> its name
+		ret	nz
+		ld	hl,fib+FIB_NAME
+same_file.char:
+		ld	a,(de)
+		cp	(hl)
+		ret	nz
+		inc	hl
+		inc	de
+		or	a
+		jr	nz,same_file.char
+		ret			; Z: all of the name
 
 ; word_dirs - the directories of a word on the command line, as the
 ;   start of each member's path.
@@ -1152,13 +1693,14 @@ entry_path.done:
 		ld	(lzhw_length),hl
 		ret
 
-; adding_line - the start of a member's line, "Adding " and its path.
-;   progress.as calls it through progress_line, to redraw the line.
+; adding_line - the start of a member's line, "Adding " or "Replacing "
+;   (line_word, from path_check), and its path. progress.as calls it
+;   through progress_line, to redraw the line.
 ;
 ;   print_member, its second half, is the path alone: printl, since it
 ;   may hold a "$".
 ;
-; Input:	lzhw_path, lzhw_length
+; Input:	line_word; lzhw_path, lzhw_length
 ; Output:	they are printed
 ; Modifies:	AF
 ;		BC
@@ -1167,7 +1709,8 @@ entry_path.done:
 ; Scratch:	none
 
 adding_line:
-		print	msg_adding
+		ld	de,(line_word)
+		dos	_STROUT
 print_member:
 		printl	lzhw_path,(lzhw_length)
 		ret
@@ -1222,7 +1765,9 @@ archive_seek:
 ; fail - stop on an MSX-DOS error: the archive is deleted.
 ;
 ;   The file being read, if one is, is closed, then the archive, which
-;   is deleted: a partial archive is never left behind. COMMAND2 prints
+;   is deleted: a partial archive is never left behind. With /A it is
+;   the temporary file that is deleted; the old archive is left as it
+;   was. COMMAND2 prints
 ;   the error's message, as it does for _TERM's code. fail_closed, its
 ;   second entry, is for when the archive is closed already.
 ;
@@ -1246,7 +1791,7 @@ fail.archive:
 		pop	af
 fail_closed:
 		push	af
-		ld	de,archive_name
+		ld	de,(write_name)	; the archive, or with /A the new one
 		dos	_DELETE
 		pop	af
 		ld	b,a
@@ -1265,16 +1810,21 @@ fail_closed:
 ; format_table		the formats' names: three letters, then the
 ;			format, for each; 0 after the last
 ; msg_exists		after the archive's name, when it exists
-; msg_nothing, msg_not_written
+; msg_nothing, msg_not_written, msg_not_changed
 ;			around the archive's name, when nothing was added
-; msg_adding, msg_ok, msg_skipping, msg_colon, msg_crlf, msg_dotdot,
-; msg_already
+; msg_no_zip_add, msg_not_lzh
+;			/A's refusals
+; msg_left		where the new archive is, when it could not take
+;			the old one's place
+; temp_ext		the temporary file's extension, and a 0
+; msg_adding, msg_replacing, msg_ok, msg_skipping, msg_colon, msg_crlf,
+; msg_dotdot, msg_already
 ;			adding's words, put together per member
 ; method_lh0, method_lhd	the methods: stored, a directory
 ; no_name, end_mark	a 0 byte: the empty name, for "everything in
 ;			it", and the end of an archive
 ;
-switch_letters:	defb	"FYQV?",0
+switch_letters:	defb	"AFYQV?",0
 msg_need_dos2:	defb	"ERROR: KAGO needs MSX-DOS2 or Nextor."
 		defb	CHR_CR,CHR_LF,"$"
 msg_banner:
@@ -1288,6 +1838,8 @@ msg_usage:
 		defb	CHR_CR,CHR_LF
 		defb	"Usage: KAGO [switches] archive files..."
 		defb	CHR_CR,CHR_LF
+		defb	CHR_CR,CHR_LF
+		defb	"  /A      add to the archive, replacing same paths"
 		defb	CHR_CR,CHR_LF
 		defb	"  /F:fmt  the format: LZH, PMA or ZIP. Without it,"
 		defb	CHR_CR,CHR_LF
@@ -1326,7 +1878,17 @@ msg_exists:	defb	" already exists.",CHR_CR,CHR_LF,"$"
 msg_nothing:	defb	"Nothing to add: $"
 msg_not_written:
 		defb	" was not written.",CHR_CR,CHR_LF,"$"
+msg_not_changed:
+		defb	" was not changed.",CHR_CR,CHR_LF,"$"
+msg_no_zip_add:
+		defb	"Adding to ZIP archives is not supported yet."
+		defb	CHR_CR,CHR_LF,"$"
+msg_not_lzh:	defb	": not an LZH archive KAGO can read."
+		defb	CHR_CR,CHR_LF,"$"
+msg_left:	defb	"The new archive is left as $"
+temp_ext:	defb	".$$$",0
 msg_adding:	defb	"Adding $"
+msg_replacing:	defb	"Replacing $"
 msg_ok:		defb	" OK",CHR_CR,CHR_LF,"$"
 msg_skipping:	defb	"Skipping $"
 msg_colon:	defb	": $"
@@ -1344,6 +1906,17 @@ end_mark:	defb	0
 ; Variables for main and the routines above:
 ;
 ; archive_name		the archive's name, from the command line, and a 0
+; files_at		where the words after it start
+; write_name		the file written: archive_name, or temp_name
+; appending		not 0 when /A adds to an archive there
+; collecting		not 0 in /A's first walk
+; old_drive, old_cluster, old_entry
+;			the old archive's drive, first cluster and name,
+;			as MSX-DOS2 finds it: open_old
+; temp_name		the temporary file's name, and a 0: make_temp
+; old_at, old_len	copy_old: where an old member starts, and its
+;			header's and data's length, 4 bytes each
+; line_word		"Adding " or "Replacing ": path_check
 ; out_format		FORMAT_LZH or FORMAT_ZIP: archive_format
 ; archive_handle	the archive, open to write
 ; archive_drive, archive_cluster, archive_entry
@@ -1368,8 +1941,8 @@ end_mark:	defb	0
 ; fib_stack		add_tree: each directory's FIB, kept while what
 ;			is in it is added; MAX_DEPTH of 64 bytes, in the
 ;			buffers segment
-; path_record		path_check: a path's record, its length and the
-;			path, in the buffers segment
+; path_record		path_keep: a path's record, its length, its marks
+;			and the path, in the buffers segment
 ;
 archive_name:	defs	128
 out_format:	defs	1
@@ -1377,6 +1950,17 @@ archive_handle:	defs	1
 archive_drive:	defs	1
 archive_cluster:	defs	2
 archive_entry:	defs	13
+files_at:	defs	2
+write_name:	defs	2
+appending:	defs	1
+collecting:	defs	1
+old_drive:	defs	1
+old_cluster:	defs	2
+old_entry:	defs	13
+temp_name:	defs	136
+old_at:	defs	4
+old_len:	defs	4
+line_word:	defs	2
 word_at:	defs	2
 spec_text:	defs	128
 added:	defs	2
@@ -1394,7 +1978,7 @@ seen_seg:	defs	1
 		dseg	buffers
 copy_buffer:	defs	COPY_SIZE
 fib_stack:	defs	MAX_DEPTH*64
-path_record:	defs	145
+path_record:	defs	146
 
 		end	main
 

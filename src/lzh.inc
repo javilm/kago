@@ -38,5 +38,6 @@ LZH_LEVEL3	equ	4		; a level 3 header, not read
 		extrn	lzh_size	; the archive's size, 4 bytes
 		extrn	lzh_clean_path	; clean lzh_name, as a path
 		extrn	lzh_dir		; not 0 for a directory
+		extrn	lzh_handle	; the archive's file handle
 		endif
 

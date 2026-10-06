@@ -33,6 +33,7 @@ LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 		public	lzh_size
 		public	lzh_clean_path
 		public	lzh_dir
+		public	lzh_handle
 
 		include	lzh.inc		; the results
 		include	common.inc	; dos

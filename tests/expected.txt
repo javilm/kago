@@ -7,6 +7,7 @@ https://github.com/javilm/kago
 
 Usage: KAGO [switches] archive files...
 
+  /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
   /Y      proceed without asking when memory is short
@@ -26,6 +27,7 @@ https://github.com/javilm/kago
 
 Usage: KAGO [switches] archive files...
 
+  /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
   /Y      proceed without asking when memory is short
@@ -45,6 +47,7 @@ https://github.com/javilm/kago
 
 Usage: KAGO [switches] archive files...
 
+  /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
   /Y      proceed without asking when memory is short
@@ -69,6 +72,7 @@ https://github.com/javilm/kago
 
 Usage: KAGO [switches] archive files...
 
+  /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
   /Y      proceed without asking when memory is short
@@ -725,6 +729,41 @@ Skipping KIN\SUB\DEEP\: added already
          0          0 -lhd-  2026-10-07 10:00 KIN\SUB\
 ---------- ---------- ------                  ------------
         75         75        7 files
+--- kago k5.lzh kin\a.txt kin\sub
+Adding KIN\A.TXT OK
+Adding KIN\SUB\ OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
+--- kago /A k5.lzh kin\*.txt
+Replacing KIN\A.TXT OK
+Adding KIN\RO.TXT OK
+Adding KIN\HID.TXT OK
+Adding KIN\A$B.TXT OK
+--- unkago /L k5.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\
+        13         13 -lh0-  2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\DEEP\
+        18         18 -lh0-  2001-02-03 04:05 KIN\A.TXT
+        12         12 -lh0-  2100-03-01 00:00 KIN\RO.TXT
+         9          9 -lh0-  2106-02-07 06:28 KIN\HID.TXT
+        23         23 -lh0-  2099-12-31 23:59 KIN\A$B.TXT
+---------- ---------- ------                  ------------
+        75         75        7 files
+--- kago /F:LZH k5.$$$ kin\a.txt
+Adding KIN\A.TXT OK
+--- kago /A k5.lzh kin\ro.txt
+K5.$$$ already exists.
+--- kago /A k5.lzh nosuch.txt
+Skipping nosuch.txt: File not found
+Nothing to add: k5.lzh was not changed.
+--- kago /A k6.lzh kin\a.txt
+Adding KIN\A.TXT OK
+--- kago /A /F:LZH z1.zip kin\a.txt
+z1.zip: not an LZH archive KAGO can read.
+--- kago /A z1.zip kin\a.txt
+Adding to ZIP archives is not supported yet.
 --- kago kout\kin\self.lzh kout\kin\*.*
 Adding KOUT\KIN\A.TXT OK
 Adding KOUT\KIN\BIG.DAT OK
@@ -735,6 +774,30 @@ Adding KOUT\KIN\A$B.TXT OK
 Adding KOUT\KIN\SUB\ OK
 Adding KOUT\KIN\SUB\IN.TXT OK
 Adding KOUT\KIN\SUB\DEEP\ OK
+--- unkago /L kout\kin\self.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        18         18 -lh0-  2001-02-03 04:05 KOUT\KIN\A.TXT
+     70000      70000 -lh0-  1980-01-01 00:00 KOUT\KIN\BIG.DAT
+         0          0 -lh0-  2024-02-29 12:34 KOUT\KIN\EMPTY.DAT
+        12         12 -lh0-  2100-03-01 00:00 KOUT\KIN\RO.TXT
+         9          9 -lh0-  2106-02-07 06:28 KOUT\KIN\HID.TXT
+        23         23 -lh0-  2099-12-31 23:59 KOUT\KIN\A$B.TXT
+         0          0 -lhd-  2026-10-07 10:00 KOUT\KIN\SUB\
+        13         13 -lh0-  2026-10-07 10:00 KOUT\KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KOUT\KIN\SUB\DEEP\
+---------- ---------- ------                  ------------
+     70075      70075        9 files
+--- kago /A kout\kin\self.lzh kout\kin\*.*
+Replacing KOUT\KIN\A.TXT OK
+Replacing KOUT\KIN\BIG.DAT OK
+Replacing KOUT\KIN\EMPTY.DAT OK
+Replacing KOUT\KIN\RO.TXT OK
+Replacing KOUT\KIN\HID.TXT OK
+Replacing KOUT\KIN\A$B.TXT OK
+Replacing KOUT\KIN\SUB\ OK
+Replacing KOUT\KIN\SUB\IN.TXT OK
+Replacing KOUT\KIN\SUB\DEEP\ OK
 --- unkago /L kout\kin\self.lzh
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
