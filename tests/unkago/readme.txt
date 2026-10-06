@@ -236,6 +236,62 @@ zlong.zip
     bytes as long.lzh's, in 80331 of deflate: for SPEED.BAT, not for
     TESTS.BAT
     sha256 d9d28f0e16fc406b51cd829b62fe01c424eb88df5a736dac0e7d14d518666953
+gpl-2.pma
+    made for Tsuzura with PMARC2 on MSX-DOS2 (openMSX): GPL-2, -pm2-,
+    stored as 18176 bytes, whole 128-byte records, the last 84 of them
+    0; date 0, as PMARC2 writes it. The same file, byte for byte, as
+    lhasa test/archives/pmarc2/pm2.pma
+    sha256 4428e8d9d4e5f61aa7fd041fc6048cfdb64052eaf2776f8b23b9430f506e7979
+gpl-2no.pma
+    the same, PMARC2 /n: -pm0-, stored
+    sha256 fd12eac497628e3b40b7b70cbefedbd769572d0727f7290db7dbf67c28c1b3fb
+far.pma
+    the same PMARC2, -pm2-: FAR.DAT, far6.lzh's 86000 bytes, as 86016
+    sha256 af9dcc789b847a50987bdee0c60468160a104594a5dd7dbbbc8467180f424b9d
+bin.pma
+    the same, -pm2-: BIN.DAT, jlh5.lzh's 40000 bytes, as 40064
+    sha256 71ba202ab864c69aca669ca1cbc061933749e1b11a035da4926f12c566470824
+big.pma
+    the same, -pm2-: BIG.DAT, tests\kago\kin.lzh's 70000 bytes, as 70016
+    sha256 e2ff57a7d647458371ce26ff93b336d01a7779123c9565f2cb24c511f9d6154c
+pmext222.com
+    PMEXT 2.22's own distribution, a self-extracting PMA: the extractor
+    (-pms-, PMsfx 2.00), then !. (913 bytes), PMEXT2.DOC and PMEXT.COM,
+    -pm2-, dated 1991-07-23
+    sha256 ab99ba2767cd142fc41ed897b9a3f388c2de9669ce9e5e75eaacdb7ae5eb534f
+p2pm0.pma
+    lhasa test/archives/pmarc2/pm0.pma: PMARC2 on MSX-DOS (openMSX),
+    /n: GPL-2.GZ, -pm0-, 6912 bytes; date 0
+    sha256 b9dc05a9dd49b19c02d5e08bf8eb7fca584d280ed0083eefcd45c6314e4003ad
+p2long.pma
+    lhasa test/archives/pmarc2/long.pma: the same PMARC2, -pm2-:
+    LONG.TXT, 1241659 bytes
+    sha256 472fdba46b19bcef96b1ef9e00fe45222d727399d0f4bb88aca9be5e8d41a38f
+p2comm.pma
+    lhasa test/archives/pmarc2/comment.pma: the same, -pm2-: HELLO.TXT,
+    with a comment in its header's extended area
+    sha256 7e0875fcc3d331c6e483d2a1b5e640f797d021395780eba7aac7b6d9d5a34866
+p2sfx.com
+    lhasa test/archives/pmarc2/sfx.com: the same, self-extracting: the
+    extractor (-pms-), then GPL-2, -pm2-
+    sha256 932381301aada6a5057ea14c0ba53bcb198f7172b2b08b93b2ea24774b4e8172
+p1pm0.pma
+    lhasa test/archives/pmarc124/pm0.pma: PMarc 1.24 for CP/M: GPL-2.GZ,
+    -pm0-; date 0
+    sha256 8deab44678436125e169a20c0f1e6260182c3b7a74277b0868e3b813483acb7b
+p1pm1.pma
+    lhasa test/archives/pmarc124/pm1.pma: the same PMarc, -pm1-:
+    COPYING.TXT, 25284 bytes
+    sha256 13dfdbd992c2fac4964b3028c646aa68eb7a4a941a4224c4837058c3771b6346
+p1long.pma
+    lhasa test/archives/pmarc124/pm1_long.pma: the same, -pm1-:
+    LONG.TXT, 1241659 bytes
+    sha256 71c77d931c960fc6e3e592cf16b1cd22fa5cbf1e2c1c7422d2365cf2f706efbd
+mtcd.pma
+    lhasa test/archives/pmarc124/mtcd.pma: -pm1-, from the wild, PMarc's
+    version unknown: MTCD.DOC and CD.MTC, dated with a month of 0, which
+    UNKAGO takes for no date
+    sha256 2eb3602b049a721881738489b2e304166bbcce4c1cd7e08c549841f514c226a8
 
 The archives from lhasa are distributed under its licence:
 

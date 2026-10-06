@@ -344,6 +344,104 @@ Extracting GPL-2 OK
 Extracting BIG.DAT OK
 Extracting BIN.DAT OK
 Extracting FAR.DAT OK
+=== UNKAGO PMA
+--- unkago /L ..\unkago\gpl-2no.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+     18176      18176 -pm0-                   GPL-2.
+---------- ---------- ------                  ------------
+     18176      18176        1 file
+--- unkago /L ..\unkago\gpl-2.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      7098      18176 -pm2-                   GPL-2.
+---------- ---------- ------                  ------------
+      7098      18176        1 file
+--- unkago /L ..\unkago\far.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+     48481      86016 -pm2-                   FAR.DAT
+---------- ---------- ------                  ------------
+     48481      86016        1 file
+--- unkago /L ..\unkago\bin.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+     13369      40064 -pm2-                   BIN.DAT
+---------- ---------- ------                  ------------
+     13369      40064        1 file
+--- unkago /L ..\unkago\big.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      4191      70016 -pm2-                   BIG.DAT
+---------- ---------- ------                  ------------
+      4191      70016        1 file
+--- unkago /L ..\unkago\pmext222.com
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+       477        913 -pm2-  1991-07-23 18:25 !.
+      4989      12186 -pm2-  1991-07-23 18:07 PMEXT2.DOC
+      8140      12928 -pm2-  1991-07-23 17:30 PMEXT.COM
+---------- ---------- ------                  ------------
+     13606      26027        3 files
+--- unkago /L ..\unkago\p2pm0.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      6912       6912 -pm0-                   GPL-2.GZ
+---------- ---------- ------                  ------------
+      6912       6912        1 file
+--- unkago /L ..\unkago\p2long.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+     85397    1241659 -pm2-                   LONG.TXT
+---------- ---------- ------                  ------------
+     85397    1241659        1 file
+--- unkago /L ..\unkago\p2comm.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        22        128 -pm2-                   HELLO.TXT
+---------- ---------- ------                  ------------
+        22        128        1 file
+--- unkago /L ..\unkago\p2sfx.com
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      7098      18176 -pm2-                   GPL-2.
+---------- ---------- ------                  ------------
+      7098      18176        1 file
+--- unkago /L ..\unkago\p1pm0.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      6912       6912 -pm0-                   GPL-2.GZ
+---------- ---------- ------                  ------------
+      6912       6912        1 file
+--- unkago /L ..\unkago\p1pm1.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      9829      25284 -pm1-                   COPYING.TXT
+---------- ---------- ------                  ------------
+      9829      25284        1 file
+--- unkago /L ..\unkago\p1long.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+    105071    1241659 -pm1-                   LONG.TXT
+---------- ---------- ------                  ------------
+    105071    1241659        1 file
+--- unkago /L ..\unkago\mtcd.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+       759       1403 -pm1-                   MTCD.DOC
+       197        256 -pm1-                   CD.MTC
+---------- ---------- ------                  ------------
+       956       1659        2 files
+--- unkago /O /D:pma ..\unkago\gpl-2no.pma
+Extracting GPL-2. OK
+--- unkago /O /D:pma\p2 ..\unkago\p2pm0.pma
+Extracting GPL-2.GZ OK
+--- unkago /O /D:pma\p1 ..\unkago\p1pm0.pma
+Extracting GPL-2.GZ OK
+--- unkago /O /D:pma ..\unkago\pmext222.com
+Skipping !.: -pm2- is not supported yet
+Skipping PMEXT2.DOC: -pm2- is not supported yet
+Skipping PMEXT.COM: -pm2- is not supported yet
 === UNKAGO DIRECTORIES
 --- unkago /L ..\unkago\tree.lzh
     Packed   Original Method Date             Name

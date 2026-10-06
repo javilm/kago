@@ -1,6 +1,7 @@
-; unkago.as - UNKAGO, the decompressor: it lists LZH and ZIP archives,
-; and extracts LZH's stored, -lh1- and -lh4- to -lh7- members and ZIP's
-; stored and deflate ones (lh5.as, lh1.as, inflate.as).
+; unkago.as - UNKAGO, the decompressor: it lists LZH, PMA and ZIP
+; archives, and extracts LZH's stored, -lh1- and -lh4- to -lh7- members,
+; PMA's stored (-pm0-) ones, and ZIP's stored and deflate ones (lh5.as,
+; lh1.as, inflate.as). A PMA archive is read as LZH (lzh.as).
 ;
 ; It checks for MSX-DOS2 and the command line. The archive's first bytes
 ; tell its format (open_archive): ZIP's are read by zip.as, LZH's by
@@ -32,6 +33,7 @@
 		include	ascii.inc	; CHR_CR, CHR_LF, CHR_SPACE
 
 LINE_FIXED	equ	46		; a listing line before the name
+DATE_AT		equ	29		; where its date starts
 TOTAL_FIXED	equ	29		; the totals line before the count
 COPY_SIZE	equ	8192		; copy_buffer: what is read and
 					;   written at a time
@@ -622,7 +624,7 @@ extract_member.discard:
 
 ; member_supported - whether the member just read is one UNKAGO
 ;   extracts: -lh0- (stored), -lh1-, -lh4- to -lh7-, or -lhd- (a
-;   directory).
+;   directory); of PMarc's, -pm0- (stored), as -lh0-.
 ;   Of a ZIP archive's, its directories and its stored and deflate
 ;   members: stored ones as -lh0-, deflate ones with -lh6-'s window
 ;   ("6", for the memory check); not an encrypted one.
@@ -661,6 +663,19 @@ member_supported.zip:
 		xor	a		; Z set
 		ret
 member_supported.lzh:
+		ld	a,(lzh_method+1)	; PMarc's: -pm0-, stored
+		cp	"p"
+		jr	nz,member_supported.lh
+		ld	a,(lzh_method+2)
+		cp	"m"
+		jr	nz,member_supported.no
+		ld	a,(lzh_method+3)
+		cp	"0"
+		jr	nz,member_supported.no	; -pm1-, -pm2-: not yet
+		ld	(member_kind),a	; "0": as -lh0-
+		xor	a		; Z set
+		ret
+member_supported.lh:
 		ld	hl,lzh_method
 		ld	de,method_lh0
 		ld	b,3		; "-lh"
@@ -1737,7 +1752,9 @@ check_memory.short:
 ;   attributes.
 ;
 ;   Levels 0 and 1 store MS-DOS's time and date words, which are set as
-;   they are. Level 2 stores seconds since 1970: format_date turns them
+;   they are, unless the date is not one (no_date: PMARC2 writes 0); then
+;   the file keeps the date it was written with. Level 2 stores seconds
+;   since 1970: format_date turns them
 ;   into the date's parts, which are packed into MS-DOS's two words; the
 ;   file gets its UTC time, as the listing shows it. A level 2 date
 ;   before 1980, which MS-DOS cannot hold, becomes 1980-01-01 00:00.
@@ -1755,6 +1772,8 @@ check_memory.short:
 ; Scratch:	none
 
 set_date_attributes:
+		call	no_date		; Z: no date to set
+		jr	z,set_date_attributes.attributes_only
 		ld	a,(lzh_level)
 		cp	2
 		jr	z,set_date_attributes.unix
@@ -1770,6 +1789,7 @@ set_date_attributes.set:
 		ld	de,out_name
 		ld	a,1		; set
 		dos	_FTIME
+set_date_attributes.attributes_only:
 		ld	a,(member_kind)
 		cp	"d"
 		ld	a,(lzh_attributes)
@@ -2097,9 +2117,10 @@ rewind_archive:
 
 ; print_member - one line of the listing: the member just read.
 ;
-;   The line is built in line_text, whose separators are fixed: the
-;   packed and original sizes, 10 digits wide; the method; the date; then
-;   the path, printed after it by print_path, since it may hold a "$".
+;   The line is built in line_text: the packed and original sizes, 10
+;   digits wide; the method; the date, or spaces for one MS-DOS cannot
+;   hold (no_date); then the path, printed after it by print_path, since
+;   it may hold a "$".
 ;
 ; Input:	lzh_packed, lzh_original, lzh_method, lzh_time, lzh_level,
 ;		lzh_name, lzh_name_length (lzh.as)
@@ -2132,10 +2153,67 @@ print_member:
 print_member.method:
 		ld	de,line_text+22
 		ldir
+		call	no_date		; Z: spaces for the date
+		jr	z,print_member.blank
+		ld	hl,date_mask	; the separators, then the digits
+		ld	de,line_text+DATE_AT
+		ld	bc,16
+		ldir
 		call	format_date
+		jr	print_member.dated
+print_member.blank:
+		ld	hl,line_text+DATE_AT
+		ld	b,16
+print_member.space:
+		ld	(hl),CHR_SPACE
+		inc	hl
+		djnz	print_member.space
+print_member.dated:
 		printl	line_text,LINE_FIXED
 		call	print_path
 		print	msg_crlf
+		ret
+
+; no_date - whether the member's date is one MS-DOS cannot hold.
+;
+;   Only levels 0 and 1 can say so, with MS-DOS's date word: a day of 0,
+;   or a month of 0 or over 12. PMARC2 writes 0, which is both.
+;
+; Input:	lzh_level, lzh_time (lzh.as)
+; Output:	Z set = no date
+; Modifies:	AF
+;		C
+;		HL
+; Scratch:	none
+
+no_date:
+		ld	a,(lzh_level)	; level 2: seconds, always a date
+		cp	2
+		jr	z,no_date.dated
+		ld	hl,(lzh_time+2)	; the date word
+		ld	a,l		; the day: bits 4 to 0
+		and	1Fh
+		ret	z
+		ld	a,l		; the month: bits 8 to 5
+		rlca
+		rlca
+		rlca
+		and	7
+		ld	c,a
+		ld	a,h
+		and	1
+		add	a,a
+		add	a,a
+		add	a,a
+		or	c
+		ret	z
+		cp	13
+		jr	nc,no_date.none
+no_date.dated:
+		or	1		; Z clear
+		ret
+no_date.none:
+		xor	a		; Z set
 		ret
 
 ; format_date - the member's date and time, into line_text as
@@ -2410,6 +2488,8 @@ print_totals.word:
 ; msg_colon, msg_not_yet, msg_separator, msg_as, msg_encrypted
 ;			extracting's words, put together per member
 ; method_lh0		the one method extracted in this phase
+; date_mask		print_member: the date's separators, before
+;			format_date writes its digits
 ; msg_space_need, msg_space_free, msg_space_on, msg_space_drive
 ;			the shortage, with the amounts and the drive
 ;			between them; check_space writes the letter
@@ -2502,6 +2582,7 @@ msg_as:		defb	" as $"
 msg_not_yet:	defb	" is not supported yet",CHR_CR,CHR_LF,"$"
 msg_encrypted:	defb	": it is encrypted",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
+date_mask:	defb	"0000-00-00 00:00"
 msg_space_need:	defb	"Extracting this archive would take $"
 msg_space_free:	defb	" on disk, but only $"
 msg_space_on:	defb	" are free on $"

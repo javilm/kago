@@ -30,6 +30,7 @@ tests/out/*
 # compresses a ROM image must not lose its input to the rule above
 !tests/**/*.bin
 !tests/**/*.rom
+!tests/**/*.com
 
 # Files that may have been brought over by mistake when
 # cloning the emulator's filesystem to the repo

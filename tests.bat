@@ -197,6 +197,51 @@ echo --- unkago /O /D:lh1 ..\unkago\lh1.lzh>>..\results.txt
 ..\..\build\unkago /O /D:lh1 ..\unkago\lh1.lzh>>..\results.txt
 cd ..\..
 
+rem PMA runs in TESTS\OUT and extracts into TESTS\OUT\PMA: PMA
+rem archives listed, PMARC2's made for Tsuzura, PMarc2's and PMarc
+rem 1.24's from lhasa, two self-extracting ones among them, their
+rem extractor (-pms-) passed over. Then the stored (-pm0-) members
+rem extracted; -pm1- and -pm2- are skipped, for now.
+echo === UNKAGO PMA>>tests\results.txt
+cd tests\out
+echo --- unkago /L ..\unkago\gpl-2no.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\gpl-2no.pma>>..\results.txt
+echo --- unkago /L ..\unkago\gpl-2.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\gpl-2.pma>>..\results.txt
+echo --- unkago /L ..\unkago\far.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\far.pma>>..\results.txt
+echo --- unkago /L ..\unkago\bin.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\bin.pma>>..\results.txt
+echo --- unkago /L ..\unkago\big.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\big.pma>>..\results.txt
+echo --- unkago /L ..\unkago\pmext222.com>>..\results.txt
+..\..\build\unkago /L ..\unkago\pmext222.com>>..\results.txt
+echo --- unkago /L ..\unkago\p2pm0.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\p2pm0.pma>>..\results.txt
+echo --- unkago /L ..\unkago\p2long.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\p2long.pma>>..\results.txt
+echo --- unkago /L ..\unkago\p2comm.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\p2comm.pma>>..\results.txt
+echo --- unkago /L ..\unkago\p2sfx.com>>..\results.txt
+..\..\build\unkago /L ..\unkago\p2sfx.com>>..\results.txt
+echo --- unkago /L ..\unkago\p1pm0.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\p1pm0.pma>>..\results.txt
+echo --- unkago /L ..\unkago\p1pm1.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\p1pm1.pma>>..\results.txt
+echo --- unkago /L ..\unkago\p1long.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\p1long.pma>>..\results.txt
+echo --- unkago /L ..\unkago\mtcd.pma>>..\results.txt
+..\..\build\unkago /L ..\unkago\mtcd.pma>>..\results.txt
+echo --- unkago /O /D:pma ..\unkago\gpl-2no.pma>>..\results.txt
+..\..\build\unkago /O /D:pma ..\unkago\gpl-2no.pma>>..\results.txt
+echo --- unkago /O /D:pma\p2 ..\unkago\p2pm0.pma>>..\results.txt
+..\..\build\unkago /O /D:pma\p2 ..\unkago\p2pm0.pma>>..\results.txt
+echo --- unkago /O /D:pma\p1 ..\unkago\p1pm0.pma>>..\results.txt
+..\..\build\unkago /O /D:pma\p1 ..\unkago\p1pm0.pma>>..\results.txt
+echo --- unkago /O /D:pma ..\unkago\pmext222.com>>..\results.txt
+..\..\build\unkago /O /D:pma ..\unkago\pmext222.com>>..\results.txt
+cd ..\..
+
 rem DIRECTORIES runs in TESTS\OUT and extracts into TESTS\OUT\DIRS,
 rem PATHS and SEL2: trees from each header level, -lhd- members, paths
 rem that are cleaned (from the root, with a drive, with . and ..), a

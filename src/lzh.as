@@ -7,6 +7,13 @@
 ; read. The layouts follow lhasa (reference/lhasa, lib/lha_file_header.c
 ; and lib/ext_header.c), which reads all three the same way.
 ;
+; A PMA archive, PMarc's, is the same chain: level 0 headers, the methods
+; -pm0- to -pm2-, and the file padded with 1Ah after the 0 that ends it.
+; A self-extracting one (.COM) is a PMA from its first byte: its first
+; member is the extractor, method -pms-, behind a header whose first
+; two bytes are a Z80 JR over it and whose other fields are not a real
+; header's. read_header passes over it by its sizes, as lhasa does.
+;
 ; It keeps what listing and extracting need: the path, the method, the
 ; packed and original sizes, the date, the level, the data's CRC and
 ; the MS-DOS attributes. The path is the directories and the name,
@@ -113,11 +120,13 @@ lzh_rewind:
 ;   its length, can be 0). Anything else that is short is a file that
 ;   ends inside a header.
 ;
-;   A header is valid only if its method field looks like "-l??-";
-;   that is also how an LZH archive is recognised. Level 0 and 1
-;   headers have a checksum, which is checked; level 2's CRC is not, in
-;   Phase 1. On return with a member, the file is at the start of its
-;   data, and lzh_packed holds the data's size.
+;   A header is valid only if its method field looks like "-l??-", or
+;   PMarc's "-p??-"; that is also how an LZH archive is recognised. A
+;   -pms- member, a self-extracting PMA's extractor, is skipped whole,
+;   by its size byte and packed size, and the next header read. Level 0
+;   and 1 headers have a checksum, which is checked; level 2's CRC is
+;   not, in Phase 1. On return with a member, the file is at the start
+;   of its data, and lzh_packed holds the data's size.
 ;
 ;   read_header reads it; make_path, last, makes the path.
 ;
@@ -165,20 +174,49 @@ read_header:
 		ret	nz		; an MSX-DOS error
 		ld	a,h
 		or	l
-		jr	z,read_header.end	; nothing at all
+		jp	z,read_header.end	; nothing at all: too far
+					;   for jr
 		ld	a,(lzh_header)
 		or	a
 		jr	nz,read_header.not_end
 		ld	a,l
 		cp	COMMON_SIZE
-		jr	c,read_header.end	; a 0 and less than a header
+		jp	c,read_header.end	; a 0, no header: too far
+					;   for jr
 		ld	a,(lzh_header+20)
 		cp	2
-		jr	nz,read_header.end	; a 0, and not level 2
+		jp	nz,read_header.end	; a 0, and not level 2: too far
+					;   for jr
 read_header.not_end:
 		ld	a,l
 		cp	COMMON_SIZE
 		jr	c,read_header.truncated
+		ld	hl,lzh_header+2	; -pms-: an extractor, passed over
+		ld	de,method_pms
+		ld	b,5
+read_header.pms:
+		ld	a,(de)
+		cp	(hl)
+		jr	nz,read_header.level
+		inc	hl
+		inc	de
+		djnz	read_header.pms
+		ld	a,(lzh_header)	; the header's rest, the size byte
+		sub	COMMON_SIZE-2	;   less 20, and the packed size
+		jr	c,read_header.damaged
+		ld	e,a
+		ld	d,0
+		ld	hl,(lzh_header+7)
+		add	hl,de
+		ld	de,(lzh_header+9)
+		jr	nc,read_header.skip
+		inc	de
+read_header.skip:
+		call	seek_on
+		or	a
+		ret	nz
+		jr	read_header	; then the first real header
+read_header.level:
 		ld	a,(lzh_header+20)	; the level
 		cp	3
 		jr	z,read_header.level3
@@ -186,9 +224,12 @@ read_header.not_end:
 		ld	a,(lzh_header+2)	; the method: "-l??-"
 		cp	"-"
 		jr	nz,read_header.damaged
-		ld	a,(lzh_header+3)
+		ld	a,(lzh_header+3)	; "l", or PMarc's "p"
 		cp	"l"
+		jr	z,read_header.method
+		cp	"p"
 		jr	nz,read_header.damaged
+read_header.method:
 		ld	a,(lzh_header+6)
 		cp	"-"
 		jr	nz,read_header.damaged
@@ -885,6 +926,10 @@ seek:
 		pop	af
 		dos	_SEEK
 		ret
+
+; method_pms		read_header: a self-extracting PMA's extractor
+;
+method_pms:	defb	"-pms-"
 
 		dseg
 
