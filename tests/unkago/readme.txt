@@ -86,6 +86,26 @@ pair.lzh
     big1.lzh's, then SMALL.DAT, 15 bytes. Too big for what is
     left of the RAM disk, unless only SMALL.DAT is asked for
     sha256 b8063e467d51afec2b2f56e86ec8b4ddf8e655254b04a1c020860f4831392bdd
+jlh5.lzh
+    made for Tsuzura with LHa for Java (jlha-utils), level 1, -lh5-:
+    BIN.DAT, 40000 bytes of structured binary (Python's random, seed
+    5), and MIX.DAT: gpl-2.gz's 6829 compressed bytes, then the first
+    10000 bytes of the GPL text
+    sha256 d689437f7019ebcd56e55a2572bb8c3cfb9e17cd66e09e846adebce6ad8007ac
+lh5one.lzh
+    made for Tsuzura by hand: level 0, -lh5-, ONE.DAT, the one byte
+    "A": a block of 1 symbol whose three trees each hold a single
+    symbol, so the byte takes no bits. lhasa tests it as correct
+    sha256 681120c81407fcd3a48c8afdd53f81918ece22a6c750ef24cca74d4fb228e2e2
+lh5zero.lzh
+    made for Tsuzura by hand: level 0, -lh5-, ZERO.DAT, 0 bytes, no
+    data. LHA itself stores an empty file as -lh0-
+    sha256 b37204112c8620beac4a7095a0b3d055a1b5769f1d5bbb26dcd8a4898ba469bf
+lh5bad.lzh
+    lh5one.lzh's kind, BAD.DAT, but its literal tree's single symbol
+    is 511, which does not exist: the data is not valid. lhasa reports
+    a CRC error
+    sha256 b78a50192a11c552b0a0224179ce1544ed424f559b05e514755bb87cdf013cbe
 
 The archives from lhasa are distributed under its licence:
 

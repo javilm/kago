@@ -3,7 +3,8 @@
 ;
 ; It checks for MSX-DOS2 and the command line. With /L it lists the
 ; members of an LZH archive: sizes, method, date and name, one line
-; each, and the totals. Without it, it extracts the -lh0- members into
+; each, and the totals. Without it, it extracts the -lh0- (stored) and
+; -lh5- (lh5.as) members into
 ; the current directory, or the one /D: names, checking first that they
 ; fit and then each one's CRC-16. Names after the archive's, with * and
 ; ?, choose the members, for listing and extracting alike. On the
@@ -12,6 +13,7 @@
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
 		include	crc.inc		; crc.as: the CRC-16
+		include	lh5.inc		; lh5.as: the -lh5- decoder
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .DKFUL...
@@ -46,6 +48,8 @@ PATH_SEPARATOR	equ	5Ch		; "\", the yen sign on a Japanese MSX
 main:
 		call	dos_version	; CY set = not MSX-DOS2
 		jp	c,main.need_dos2	; too far for jr
+		call	heapinit	; MapperHeap: CY set = no mapper
+		jp	c,main.no_mapper
 		ld	hl,switch_letters
 		call	find_bad_switch	; CY set = a switch it does not take
 		jp	c,main.bad_switch	; too far for jr
@@ -113,6 +117,10 @@ main.usage:
 main.bad_switch:
 		ld	b,.IOPT		; COMMAND2: *** Invalid option
 		dos	_TERM
+
+main.no_mapper:
+		print	msg_no_mapper
+		dos	_TERM0
 
 main.need_dos2:
 		print	msg_need_dos2	; _STROUT: MSX-DOS1 has it too
@@ -439,10 +447,21 @@ extract_member.created:
 		call	progress_start	; "   0%", on the screen
 		ld	hl,0
 		ld	(crc_value),hl
-		ld	hl,(lzh_packed)	; remaining = the data's size
+		ld	hl,(lzh_packed)	; -lh0-: the data's size
+		ld	de,(lzh_packed+2)
+		ld	a,(member_kind)
+		cp	"5"
+		jr	nz,extract_member.sized
+		ld	hl,(lzh_original)	; -lh5-: what it unpacks to
+		ld	de,(lzh_original+2)
+extract_member.sized:
 		ld	(remaining),hl
-		ld	hl,(lzh_packed+2)
-		ld	(remaining+2),hl
+		ld	(remaining+2),de
+		jr	nz,extract_member.copy	; Z still from the CP
+		ld	de,copy_buffer	; the window
+		call	lh5_start	; A = 0, or .NORAM
+		or	a
+		jp	nz,extract_member.failed
 extract_member.copy:
 		ld	hl,(remaining+2)
 		ld	a,h
@@ -461,10 +480,17 @@ extract_member.copy:
 		ex	de,hl		; HL = COPY_SIZE
 extract_member.chunk:
 		ld	(chunk),hl
+		ld	a,(member_kind)
+		cp	"5"
+		jr	z,extract_member.decode
 		ld	de,copy_buffer
 		call	lzh_read	; A = 0, TRUNCATED, or an error
+		jr	extract_member.read
+extract_member.decode:
+		call	lh5_read	; A = 0, LH5_BAD, or as lzh_read
+extract_member.read:
 		or	a
-		jp	nz,extract_member.failed	; too far for jr
+		jp	nz,extract_member.not_read	; too far for jr
 		ld	de,copy_buffer
 		ld	bc,(chunk)
 		call	crc_update
@@ -474,11 +500,11 @@ extract_member.chunk:
 		ld	hl,(chunk)
 		dos	_WRITE		; HL = how many were written
 		or	a
-		jr	nz,extract_member.failed
+		jp	nz,extract_member.failed	; too far for jr
 		ld	de,(chunk)
 		sbc	hl,de		; carry clear from OR A
 		ld	a,.DKFUL	; fewer written: the disk is full
-		jr	nz,extract_member.failed
+		jp	nz,extract_member.failed
 		ld	hl,(remaining)	; remaining -= chunk
 		sbc	hl,de		; carry clear: the SBC above was 0
 		ld	(remaining),hl
@@ -489,6 +515,13 @@ extract_member.chunk:
 		call	progress_update
 		jr	extract_member.copy
 extract_member.copied:
+		ld	a,(member_kind)
+		cp	"5"
+		jr	nz,extract_member.close	; -lh0-: all of it was read
+		call	lh5_finish	; the data not read: A = 0, or
+		or	a
+		jp	nz,extract_member.failed
+extract_member.close:
 		ld	a,(out_handle)
 		ld	b,a
 		dos	_CLOSE
@@ -510,6 +543,21 @@ extract_member.crc_error:
 		print	msg_crc_error
 		xor	a
 		ret
+extract_member.not_read:
+		cp	LH5_BAD		; bad data: this member only
+		jr	nz,extract_member.failed
+		ld	a,(out_handle)
+		ld	b,a
+		dos	_CLOSE
+		ld	de,out_name
+		dos	_DELETE
+		call	lh5_finish	; on to the next member
+		or	a
+		ret	nz
+		call	progress_end
+		print	msg_data_error
+		xor	a
+		ret
 extract_member.failed:
 		push	af		; A = what stopped it
 		ld	a,(out_handle)
@@ -525,11 +573,12 @@ extract_member.discard:
 		pop	af
 		ret
 
-; member_supported - whether the member just read is one this phase
-;   extracts: -lh0- (stored) only.
+; member_supported - whether the member just read is one UNKAGO
+;   extracts: -lh0- (stored) or -lh5-.
 ;
 ; Input:	lzh_method (lzh.as)
-; Output:	Z set = it is
+; Output:	Z set = it is, and then
+;		A = member_kind = "0" or "5"
 ; Modifies:	AF
 ;		B
 ;		DE
@@ -539,7 +588,7 @@ extract_member.discard:
 member_supported:
 		ld	hl,lzh_method
 		ld	de,method_lh0
-		ld	b,5
+		ld	b,3		; "-lh"
 member_supported.next:
 		ld	a,(de)
 		cp	(hl)
@@ -547,7 +596,15 @@ member_supported.next:
 		inc	hl
 		inc	de
 		djnz	member_supported.next
-		ret			; Z set from the last CP
+		ld	a,(lzh_method+4)
+		cp	"-"
+		ret	nz
+		ld	a,(lzh_method+3)	; the method's number
+		ld	(member_kind),a
+		cp	"0"
+		ret	z
+		cp	"5"
+		ret			; Z set: -lh5-
 
 ; check_space - stop, saying why, unless the extraction fits.
 ;
@@ -1195,7 +1252,7 @@ progress_init.set:
 ;   later update only adds. A member under 100 bytes has 0 bytes per per
 ;   cent, and goes straight to 100 at its first update.
 ;
-; Input:	lzh_packed (lzh.as), progress
+; Input:	lzh_original (lzh.as), progress
 ; Output:	"   0%" on the screen, when showing progress
 ;		pct, pct_step, pct_next, copied
 ; Modifies:	AF
@@ -1209,8 +1266,8 @@ progress_start:
 		ld	a,(progress)
 		or	a
 		ret	z
-		ld	hl,(lzh_packed)
-		ld	de,(lzh_packed+2)
+		ld	hl,(lzh_original)
+		ld	de,(lzh_original+2)
 		ld	c,100
 		call	divide_by_c	; DE:HL = bytes per per cent
 		ld	(pct_step),hl
@@ -1749,6 +1806,8 @@ print_totals.word:
 ; msg_kb, msg_mb, mb_digit	print_size's units; it writes the tenths
 ; msg_not_extracted	not_extracted's line, before the name
 ; msg_not_in		report_unmatched's line, before the name
+; msg_data_error		a member whose -lh5- data is not valid
+; msg_no_mapper		heapinit found no mapper support
 ; msg_cr, msg_blank, pct_text
 ;			the progress line: back to its start, five
 ;			spaces over the number, the number; progress_number
@@ -1835,6 +1894,9 @@ mb_digit:	defb	"0 MB$"
 msg_not_extracted:
 		defb	"Not extracted $"
 msg_not_in:	defb	"Not in the archive: $"
+msg_data_error:	defb	" data error",CHR_CR,CHR_LF,"$"
+msg_no_mapper:	defb	"UNKAGO needs MSX-DOS2's mapper support."
+		defb	CHR_CR,CHR_LF,"$"
 msg_cr:		defb	CHR_CR,"$"
 msg_blank:	defb	"     $"
 pct_text:	defb	"   0%$"
@@ -1874,6 +1936,8 @@ pct_text:	defb	"   0%$"
 ; need_clusters		what the extraction takes, 4 bytes
 ; stop_code		not_extracted: what stopped the extraction
 ; walked		not_extracted: the members walked again
+; member_kind		"0" or "5": the member's method, as
+;			member_supported found it
 ; progress		not 0 to show progress
 ; pct			the percentage on the screen
 ; pct_step		the bytes in one per cent, 4 bytes
@@ -1925,6 +1989,7 @@ size_round:	defs	1
 size_value:	defs	4
 size_text:	defs	10
 listed:	defs	2
+member_kind:	defs	1
 progress:	defs	1
 pct:	defs	1
 pct_step:	defs	4

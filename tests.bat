@@ -161,6 +161,23 @@ echo --- unkago /L ..\unkago\multi0.lzh x*>>..\results.txt
 ..\..\build\unkago /L ..\unkago\multi0.lzh x*>>..\results.txt
 cd ..\..
 
+rem LH5 runs in TESTS\OUT and extracts into TESTS\OUT\LH5.
+echo === UNKAGO LH5>>tests\results.txt
+cd tests\out
+echo --- unkago /O /D:lh5 ..\unkago\l1lh5.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\l1lh5.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\l2lh5.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\l2lh5.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\jlh5.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\jlh5.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\lh5one.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\lh5one.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\lh5zero.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\lh5zero.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\lh5bad.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\lh5bad.lzh>>..\results.txt
+cd ..\..
+
 echo === MAPTEST>>tests\results.txt
 echo --- maptest>>tests\results.txt
 build\maptest>>tests\results.txt

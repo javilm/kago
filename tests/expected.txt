@@ -261,7 +261,7 @@ Extracting READONLY.DAT OK
 --- unkago /O ..\unkago\badcrc.lzh
 Extracting BADCRC.DAT CRC error
 --- unkago /O ..\unkago\l2lh5.lzh
-Skipping gpl-2: -lh5- is not supported yet
+Extracting gpl-2 OK
 --- unkago /O ..\unkago\cutdata.lzh
 The archive ends in the middle of a member.
 --- del readonly.dat
@@ -315,6 +315,20 @@ Extracting EMPTY.DAT OK
         20         20        1 file
 --- unkago /L ..\unkago\multi0.lzh x*
 Not in the archive: X*
+=== UNKAGO LH5
+--- unkago /O /D:lh5 ..\unkago\l1lh5.lzh
+Extracting GPL-2 OK
+--- unkago /O /D:lh5 ..\unkago\l2lh5.lzh
+Extracting gpl-2 OK
+--- unkago /O /D:lh5 ..\unkago\jlh5.lzh
+Extracting BIN.DAT OK
+Extracting MIX.DAT OK
+--- unkago /O /D:lh5 ..\unkago\lh5one.lzh
+Extracting ONE.DAT OK
+--- unkago /O /D:lh5 ..\unkago\lh5zero.lzh
+Extracting ZERO.DAT OK
+--- unkago /O /D:lh5 ..\unkago\lh5bad.lzh
+Extracting BAD.DAT data error
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free
