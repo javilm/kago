@@ -43,7 +43,9 @@
 ; differ. So window_start takes the bit order, and lh5_read gets its
 ; symbols and distances through sym_vector and dist_vector: decode_c
 ; and decode_p here, inflate.as's own for deflate. lh1.as decodes
-; -lh1- the same way, its adaptive tree in the tables' block.
+; -lh1- the same way, its adaptive tree in the tables' block, and
+; pm2.as PMARC2's -pm2-, whose shortest match is 2 bytes: so a match's
+; length is its symbol less len_bias, 253, or 254 for -pm2-.
 ;
 ; The formats and the table builder follow LHa for UNIX 1.14i
 ; (reference/lha-unix: src/huf.c, maketbl.c, slide.c), checked step
@@ -76,6 +78,8 @@ LH5_INCLUDED	equ	1		; lh5.inc: not our names as extrn
 		public	sym_vector
 		public	dist_vector
 		public	bitbuf
+		public	len_bias
+		public	back_byte
 
 		include	common.inc	; dos, and MapperHeap's routines
 		include	farptr.inc	; fpalloc, derefp
@@ -117,7 +121,8 @@ ROW		equ	34		; mt_count, mt_weight, mt_start:
 ;
 ;   lh5_start sets LHA's: the bits taken highest first, decode_c and
 ;   decode_p, C_SYMS. window_start, its second entry, is the rest:
-;   inflate_start sets deflate's and calls it with -lh6-'s window.
+;   inflate_start sets deflate's and calls it with -lh6-'s window. It
+;   sets len_bias to 253, which pm2_start changes after it.
 ;
 ; Input:	B = the method's digit: "4" to "7"
 ;		DE -> the output buffer, 8 KB, below 8000h
@@ -144,6 +149,8 @@ window_start:
 		ld	a,c		; fill_bits' bit order: its code
 		ld	(fill_bits.order+1),a	;   changed, written here
 		ld	(outbuf),de
+		ld	hl,253		; a match: symbol - 253 bytes
+		ld	(len_bias),hl
 		ld	a,b		; its row in lh_methods
 		sub	"4"
 		ld	c,a
@@ -250,7 +257,7 @@ lh5_read.next:
 		call	put_byte
 		jr	lh5_read.next
 lh5_read.match:
-		ld	de,256-3	; the length: 3 to 256
+		ld	de,(len_bias)	; the length: 3 to 256 (-pm2-: 2)
 		or	a
 		sbc	hl,de
 		ld	(match_left),hl
@@ -305,6 +312,43 @@ next_symbol:
 next_distance:
 		ld	hl,(dist_vector)
 		jp	(hl)
+
+; back_byte - a byte already decoded, from the buffer or the ring.
+;
+;   As lh5_read's match finds its source: in this part, or further back
+;   in the ring. pm2.as reads its matches' bytes back with it.
+;
+; Input:	HL = how far back, less 1: 0 is the last byte
+; Output:	A = the byte
+;		CY set: it is in this part, at HL, the bytes after it
+;		up to pos too
+; Modifies:	AF
+;		DE
+;		HL
+; Scratch:	none
+
+back_byte:
+		ld	de,(pos)	; in this part: HL < pos
+		or	a
+		sbc	hl,de
+		jr	nc,back_byte.ring
+		add	hl,de
+		ex	de,hl		; buffer[pos - HL - 1]
+		or	a
+		sbc	hl,de
+		dec	hl
+		ld	de,(outbuf)
+		add	hl,de
+		ld	a,(hl)
+		scf
+		ret
+back_byte.ring:
+		ex	de,hl		; further back: the ring, at
+		ld	hl,(win_head)	; win_head - (HL - pos) - 1
+		or	a
+		sbc	hl,de
+		dec	hl
+		jp	ring_byte	; CY clear
 
 ; put_byte - A at the buffer's pos, and pos one on.
 ;
@@ -1671,6 +1715,7 @@ lh_methods:	defb	14,4
 ;			ring (0 to 3), or PAGE_NONE
 ; want, pos		lh5_read: how many bytes, how many so far
 ; match_left, match_dist	a match not finished: bytes left, its distance
+; len_bias		a match's symbol less its length: 253, or 254
 ; lh5_left		the member's data not yet read, 4 bytes
 ; lh5_error		0, or what went wrong: LH5_BAD, or from reading
 ; in_count, in_ptr	in_buf: bytes not used yet, the next one
@@ -1721,6 +1766,7 @@ want:		defs	2
 pos:		defs	2
 match_left:	defs	2
 match_dist:	defs	2
+len_bias:	defs	2
 lh5_left:	defs	4
 lh5_error:	defs	1
 in_count:	defs	2

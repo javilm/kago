@@ -1,4 +1,4 @@
-; lh5share.inc - what inflate.as and lh1.as share of lh5.as beyond
+; lh5share.inc - what inflate.as, lh1.as and pm2.as share of lh5.as beyond
 ; lh5.inc: the tables' layout, the routines it builds and reads them
 ; with, and the variables they work on. Only they and lh5.as include it.
 ;
@@ -32,5 +32,7 @@ PT_TABLE	equ	8192		; 256 words: 8 bits to a symbol
 		extrn	sym_vector	; where lh5_read's symbols come
 		extrn	dist_vector	;   from, and its distances
 		extrn	bitbuf		; the next 16 bits, the first highest
+		extrn	len_bias	; a match's symbol less its length
+		extrn	back_byte	; A = the byte HL + 1 back
 		endif
 

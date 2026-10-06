@@ -439,9 +439,21 @@ Extracting GPL-2.GZ OK
 --- unkago /O /D:pma\p1 ..\unkago\p1pm0.pma
 Extracting GPL-2.GZ OK
 --- unkago /O /D:pma ..\unkago\pmext222.com
-Skipping !.: -pm2- is not supported yet
-Skipping PMEXT2.DOC: -pm2- is not supported yet
-Skipping PMEXT.COM: -pm2- is not supported yet
+Extracting !. OK
+Extracting PMEXT2.DOC OK
+Extracting PMEXT.COM OK
+--- unkago /O /D:pma\pm2 ..\unkago\gpl-2.pma
+Extracting GPL-2. OK
+--- unkago /O /D:pma\pm2 ..\unkago\far.pma
+Extracting FAR.DAT OK
+--- unkago /O /D:pma\pm2 ..\unkago\big.pma
+Extracting BIG.DAT OK
+--- unkago /O /D:pma\pm2 ..\unkago\bin.pma
+Extracting BIN.DAT CRC error
+--- unkago /O /D:pma\pm2 ..\unkago\p2comm.pma
+Extracting HELLO.TXT OK
+--- unkago /O /D:pma\sfx ..\unkago\p2sfx.com
+Extracting GPL-2. OK
 === UNKAGO DIRECTORIES
 --- unkago /L ..\unkago\tree.lzh
     Packed   Original Method Date             Name

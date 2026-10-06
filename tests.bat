@@ -200,8 +200,9 @@ cd ..\..
 rem PMA runs in TESTS\OUT and extracts into TESTS\OUT\PMA: PMA
 rem archives listed, PMARC2's made for Tsuzura, PMarc2's and PMarc
 rem 1.24's from lhasa, two self-extracting ones among them, their
-rem extractor (-pms-) passed over. Then the stored (-pm0-) members
-rem extracted; -pm1- and -pm2- are skipped, for now.
+rem extractor (-pms-) passed over. Then the stored (-pm0-) and -pm2-
+rem members extracted; -pm1- is skipped, for now. PMARC2 wrote one
+rem match of BIN.PMA wrong, so BIN.DAT is a CRC error, as with PMEXT.
 echo === UNKAGO PMA>>tests\results.txt
 cd tests\out
 echo --- unkago /L ..\unkago\gpl-2no.pma>>..\results.txt
@@ -240,6 +241,18 @@ echo --- unkago /O /D:pma\p1 ..\unkago\p1pm0.pma>>..\results.txt
 ..\..\build\unkago /O /D:pma\p1 ..\unkago\p1pm0.pma>>..\results.txt
 echo --- unkago /O /D:pma ..\unkago\pmext222.com>>..\results.txt
 ..\..\build\unkago /O /D:pma ..\unkago\pmext222.com>>..\results.txt
+echo --- unkago /O /D:pma\pm2 ..\unkago\gpl-2.pma>>..\results.txt
+..\..\build\unkago /O /D:pma\pm2 ..\unkago\gpl-2.pma>>..\results.txt
+echo --- unkago /O /D:pma\pm2 ..\unkago\far.pma>>..\results.txt
+..\..\build\unkago /O /D:pma\pm2 ..\unkago\far.pma>>..\results.txt
+echo --- unkago /O /D:pma\pm2 ..\unkago\big.pma>>..\results.txt
+..\..\build\unkago /O /D:pma\pm2 ..\unkago\big.pma>>..\results.txt
+echo --- unkago /O /D:pma\pm2 ..\unkago\bin.pma>>..\results.txt
+..\..\build\unkago /O /D:pma\pm2 ..\unkago\bin.pma>>..\results.txt
+echo --- unkago /O /D:pma\pm2 ..\unkago\p2comm.pma>>..\results.txt
+..\..\build\unkago /O /D:pma\pm2 ..\unkago\p2comm.pma>>..\results.txt
+echo --- unkago /O /D:pma\sfx ..\unkago\p2sfx.com>>..\results.txt
+..\..\build\unkago /O /D:pma\sfx ..\unkago\p2sfx.com>>..\results.txt
 cd ..\..
 
 rem DIRECTORIES runs in TESTS\OUT and extracts into TESTS\OUT\DIRS,
