@@ -524,7 +524,7 @@ add_word.refused:
 ;   already in this run says so, and is not added again. A file is opened
 ;   through its FIB; its header is written as far as it is known (the
 ;   CRC still 0), then its data, COPY_SIZE bytes at a time, packed
-;   (lh5w_block) or stored, the CRC computed and the bytes counted on
+;   (lh5w_data) or stored, the CRC computed and the bytes counted on
 ;   the way; then the header again, in its place, with the CRC and the
 ;   sizes. Packing that reaches the file's own size stops: the file and
 ;   the archive go back to the data's start (data_at), and the file is
@@ -615,7 +615,7 @@ add_entry.read:
 		jr	z,add_entry.store
 		ld	de,copy_buffer	; packed
 		ld	bc,(chunk)
-		call	lh5w_block	; CY: no smaller than the file
+		call	lh5w_data	; CY: no smaller than the file
 		jp	c,add_entry.unpackable	; too far for jr
 		jr	add_entry.count
 add_entry.store:

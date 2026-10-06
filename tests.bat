@@ -431,10 +431,10 @@ rem packed: -lh5-, but for the files that do not get smaller, which are
 rem stored. UNKAGO lists it, then extracts it into POUT for the Mac to
 rem compare; then /A replaces KIN\A.TXT in it, which copies the -lh5-
 rem member KIN\BIG.DAT as it is, and UNKAGO lists it again. EDGE.LZH
-rem holds the encoder's edge cases, extracted into EDGE: one byte only
-rem (ONE.DAT), 128 bytes as often as each other (HALF.DAT), and 256
-rem (ALL.DAT, which does not get smaller, over two blocks). They go into
-rem K8.LZH, listed and extracted into POUT too.
+rem holds the encoder's edge cases, extracted into EDGE: one byte over
+rem and over (ONE.DAT), runs of 128 and 256 different bytes (HALF.DAT,
+rem ALL.DAT), and noise, which does not get smaller (NOISE.DAT). They go
+rem into K8.LZH, listed and extracted into POUT too.
 echo === KAGO PACKING>>tests\results.txt
 attrib -r tests\out\pout\kin\ro.txt
 cd tests\out
