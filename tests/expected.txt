@@ -422,6 +422,85 @@ Extracting tree\sub\deep\c.txt OK
          5          5 -lh0-  2026-10-06 18:00 tree\sub\deep\c.txt
 ---------- ---------- ------                  ------------
          5          5        2 files
+=== UNKAGO LONG NAMES
+--- unkago /L ..\unkago\lfn.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        18         18 -lh0-  2026-10-06 18:00 longfilename.txt
+        18         18 -lh0-  2026-10-06 18:00 longfilenamf.txt
+        14         14 -lh0-  2026-10-06 18:00 LONGFI~1.TXT
+        12         12 -lh0-  2026-10-06 18:00 readme.txt
+         9          9 -lh0-  2026-10-06 18:00 a+b.txt
+        11         11 -lh0-  2026-10-06 18:00 my file.c
+         7          7 -lh0-  2026-10-06 18:00 a.b.c
+        10         10 -lh0-  2026-10-06 18:00 .profile
+        11         11 -lh0-  2026-10-06 18:00 file.html
+         0          0 -lhd-  2026-10-06 18:00 Long Directory Name\
+        31         31 -lh0-  2026-10-06 18:00 Long Directory Name\inner.txt
+        36         36 -lh0-  2026-10-06 18:00 Long Directory Name\other file.txt
+        17         17 -lh0-  2026-10-06 18:00 collision01.txt
+        17         17 -lh0-  2026-10-06 18:00 collision02.txt
+        17         17 -lh0-  2026-10-06 18:00 collision03.txt
+        17         17 -lh0-  2026-10-06 18:00 collision04.txt
+        17         17 -lh0-  2026-10-06 18:00 collision05.txt
+        17         17 -lh0-  2026-10-06 18:00 collision06.txt
+        17         17 -lh0-  2026-10-06 18:00 collision07.txt
+        17         17 -lh0-  2026-10-06 18:00 collision08.txt
+        17         17 -lh0-  2026-10-06 18:00 collision09.txt
+        17         17 -lh0-  2026-10-06 18:00 collision10.txt
+        17         17 -lh0-  2026-10-06 18:00 collision11.txt
+---------- ---------- ------                  ------------
+       364        364        23 files
+--- unkago /O /D:lfn ..\unkago\lfn.lzh
+Extracting longfilename.txt as LONGFI~2.TXT OK
+Extracting longfilenamf.txt as LONGFI~3.TXT OK
+Extracting LONGFI~1.TXT OK
+Extracting readme.txt OK
+Extracting a+b.txt as A_B~1.TXT OK
+Extracting my file.c as MYFILE~1.C OK
+Extracting a.b.c as AB~1.C OK
+Extracting .profile as PROFIL~1 OK
+Extracting file.html as FILE~1.HTM OK
+Extracting Long Directory Name\ as LONGDI~1\ OK
+Extracting Long Directory Name\inner.txt as LONGDI~1\INNER.TXT OK
+Extracting Long Directory Name\other file.txt as LONGDI~1\OTHERF~1.TXT OK
+Extracting collision01.txt as COLLIS~1.TXT OK
+Extracting collision02.txt as COLLIS~2.TXT OK
+Extracting collision03.txt as COLLIS~3.TXT OK
+Extracting collision04.txt as COLLIS~4.TXT OK
+Extracting collision05.txt as COLLIS~5.TXT OK
+Extracting collision06.txt as COLLIS~6.TXT OK
+Extracting collision07.txt as COLLIS~7.TXT OK
+Extracting collision08.txt as COLLIS~8.TXT OK
+Extracting collision09.txt as COLLIS~9.TXT OK
+Extracting collision10.txt as COLLI~10.TXT OK
+Extracting collision11.txt as COLLI~11.TXT OK
+--- unkago /D:lfn ..\unkago\lfn.lzh
+Skipping longfilename.txt as LONGFI~2.TXT: it already exists
+Skipping longfilenamf.txt as LONGFI~3.TXT: it already exists
+Skipping LONGFI~1.TXT: it already exists
+Skipping readme.txt: it already exists
+Skipping a+b.txt as A_B~1.TXT: it already exists
+Skipping my file.c as MYFILE~1.C: it already exists
+Skipping a.b.c as AB~1.C: it already exists
+Skipping .profile as PROFIL~1: it already exists
+Skipping file.html as FILE~1.HTM: it already exists
+Extracting Long Directory Name\ as LONGDI~1\ OK
+Skipping Long Directory Name\inner.txt as LONGDI~1\INNER.TXT: it already exists
+Skipping Long Directory Name\other file.txt as LONGDI~1\OTHERF~1.TXT: it already exists
+Skipping collision01.txt as COLLIS~1.TXT: it already exists
+Skipping collision02.txt as COLLIS~2.TXT: it already exists
+Skipping collision03.txt as COLLIS~3.TXT: it already exists
+Skipping collision04.txt as COLLIS~4.TXT: it already exists
+Skipping collision05.txt as COLLIS~5.TXT: it already exists
+Skipping collision06.txt as COLLIS~6.TXT: it already exists
+Skipping collision07.txt as COLLIS~7.TXT: it already exists
+Skipping collision08.txt as COLLIS~8.TXT: it already exists
+Skipping collision09.txt as COLLIS~9.TXT: it already exists
+Skipping collision10.txt as COLLI~10.TXT: it already exists
+Skipping collision11.txt as COLLI~11.TXT: it already exists
+--- unkago /O /D:lsel ..\unkago\lfn.lzh collision11.txt
+Extracting collision11.txt as COLLI~11.TXT OK
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

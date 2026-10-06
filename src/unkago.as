@@ -8,7 +8,8 @@
 ; one /D: names, checking first that they fit on the disk and their
 ; windows in the mapper, and then each one's CRC-16. The directories in
 ; the members' paths are made as they are needed, and -lhd- members
-; make theirs and give them their dates. Names after the archive's,
+; make theirs and give them their dates; a part of a path that does not
+; fit 8.3 is shortened the VFAT way (names.as). Names after the archive's,
 ; with * and ?, choose the members, for listing and extracting alike;
 ; a directory's name chooses what is under it. On the screen, each
 ; member's line shows how far through it UNKAGO is.
@@ -17,6 +18,7 @@
 		include	lzh.inc		; lzh.as: reading the archive
 		include	crc.inc		; crc.as: the CRC-16
 		include	lh5.inc		; lh5.as: the -lh5- decoder
+		include	names.inc	; names.as: the MSX-DOS names
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .DKFUL...
@@ -297,7 +299,8 @@ list_archive.dos_error:
 ; extract_archive - extract the members of the archive named in
 ;   archive_name, into the current directory or dest_path.
 ;
-;   First check_space walks the archive and stops unless it all fits;
+;   First name_walk gives every part of every path its MSX-DOS name;
+;   then check_space walks the archive and stops unless it all fits;
 ;   then the directories /D: names are created; then the archive is
 ;   walked again, extracting.
 ;
@@ -320,6 +323,7 @@ extract_archive:
 		call	lzh_open
 		or	a
 		jp	nz,report_stop	; not found, say
+		call	name_walk	; the names; back at the start
 		call	check_space	; returns only if it all fits
 		ld	a,1
 		ld	(dest_mode),a	; walk_dest: create
@@ -402,7 +406,7 @@ extract_member:
 		cp	.FILEX
 		jr	nz,extract_member.no_dir
 		print	msg_skipping	; "create new" refused
-		call	print_path
+		call	print_target
 		print	msg_exists
 		jp	lzh_skip_data	; A = 0, or what stopped it
 extract_member.no_dir:
@@ -412,7 +416,7 @@ extract_member.no_dir:
 		ret	z
 		push	af
 		print	msg_skipping
-		call	print_path
+		call	print_target
 		print	msg_colon
 		pop	af
 		call	print_explanation	; MSX-DOS2's reason
@@ -424,7 +428,7 @@ extract_member.directory:
 		or	l
 		jp	z,lzh_skip_data	; the destination itself: no line
 		print	msg_extracting
-		call	print_path
+		call	print_target
 		call	set_date_attributes
 		print	msg_ok
 		jp	lzh_skip_data	; no data, but on to the next header
@@ -439,7 +443,7 @@ extract_member.created:
 		ld	a,b
 		ld	(out_handle),a
 		print	msg_extracting
-		call	print_path
+		call	print_target
 		call	progress_start	; "   0%", on the screen
 		ld	hl,0
 		ld	(crc_value),hl
@@ -611,6 +615,55 @@ member_supported.next:
 member_supported.no:
 		or	1		; Z clear
 		ret
+
+; name_walk - the MSX-DOS name of every part of every member's path.
+;
+;   Every member, asked for or not: the numbers in the tails must not
+;   depend on which ones are. One walk puts each path into names.as's
+;   table, names_assign gives the tails, and the archive is rewound for
+;   check_space. A walk that fails ends here, through report_stop, as
+;   check_space's would, members counted the same way. A table that
+;   does not fit in the mapper is R7's shortage: one segment more than
+;   it has had.
+;
+; Input:	the archive open, at its start
+; Output:	the table; the archive at its start
+; Modifies:	everything
+; Scratch:	none
+
+name_walk:
+		call	names_init
+		ld	hl,0
+		ld	(members),hl
+name_walk.next:
+		call	lzh_next_header
+		or	a
+		jr	nz,name_walk.end
+		ld	hl,(members)
+		inc	hl
+		ld	(members),hl
+		call	names_add	; CY: no room
+		jr	c,name_walk.full
+		call	lzh_skip_data
+		or	a
+		jr	z,name_walk.next
+		jp	report_stop	; cut off, or a read error
+name_walk.end:
+		cp	LZH_END
+		jp	nz,report_stop	; damaged, level 3, an error
+		call	names_assign
+		call	lzh_rewind
+		or	a
+		ret	z
+		jp	report_stop
+name_walk.full:
+		ld	a,(names_segs)	; free: what it took; needed: one more
+		ld	l,a
+		ld	h,0
+		ld	(free_segs),hl
+		inc	a
+		ld	(need_segs),a
+		jp	check_memory.short
 
 ; check_space - stop, saying why, unless the extraction fits.
 ;
@@ -964,16 +1017,19 @@ walk_at_end:
 		pop	de
 		ret
 
-; out_path - out_name: the destination, then the member's path.
+; out_path - out_name: the destination, then the member's path, as
+;   names_out gives it in MSX-DOS names.
 ;
-; Input:	dest_path; lzh_name, lzh_name_length (lzh.as)
+; Input:	dest_path; lzh_name, lzh_name_length (lzh.as); the names
 ; Output:	out_name: the two, a "\" between if the destination
 ;		needs one, and a 0
 ;		out_member -> where the member's path starts in it
+;		names_changed: not 0 if a part was shortened
 ; Modifies:	AF
 ;		BC
 ;		DE
 ;		HL
+;		IX
 ; Scratch:	none
 
 out_path:
@@ -999,13 +1055,7 @@ out_path.dest:
 		inc	de
 out_path.name:
 		ld	(out_member),de
-		ld	bc,(lzh_name_length)
-		ld	a,b
-		or	c
-		jr	z,out_path.named	; empty: _CREATE says why
-		ld	hl,lzh_name
-		ldir
-out_path.named:
+		call	names_out	; empty: _CREATE says why
 		xor	a
 		ld	(de),a
 		ret
@@ -1718,7 +1768,7 @@ progress_end:
 progress_prefix:
 		print	msg_cr		; back to the line's start
 		print	msg_extracting
-		jp	print_path
+		jp	print_target
 ; check_memory - stop, saying why, unless the window and the tables fit
 ;   in the free mapper memory, as R7 asks.
 ;
@@ -1726,7 +1776,8 @@ progress_prefix:
 ;   found it, in segments), and one segment more for the decoder's
 ;   tables, against mapfree's free segments. A shortage gives both
 ;   figures, in KB or MB, as for the disk; print_size is told that a
-;   "cluster" is a 16 KB segment.
+;   "cluster" is a 16 KB segment. name_walk prints its own shortage
+;   from check_memory.short, need_segs and free_segs set.
 ;
 ; Input:	need_segs: the largest window, 0 for none
 ; Output:	returns only if it fits
@@ -1747,6 +1798,7 @@ check_memory:
 		or	a
 		sbc	hl,de
 		ret	nc		; it fits
+check_memory.short:
 		ld	a,14		; print_size: segments of 16 KB
 		ld	(cluster_shift),a
 		print	msg_mem_need
@@ -1908,6 +1960,32 @@ pack_date.early:
 print_path:
 		printl	lzh_name,(lzh_name_length)
 		ld	a,(lzh_method+3)
+		cp	"d"
+		ret	nz
+		print	msg_separator
+		ret
+
+; print_target - the member's path, and where it goes when that is
+;   not the same: " as " and out_name's part, when a part of the path
+;   had to be shortened.
+;
+; Input:	lzh.as's variables; out_member, names_changed (out_path)
+; Output:	the path is printed
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+print_target:
+		call	print_path
+		ld	a,(names_changed)
+		or	a
+		ret	z
+		print	msg_as
+		ld	de,(out_member)
+		call	print_zero
+		ld	a,(lzh_method+3)	; a -lhd- member's ends in "\"
 		cp	"d"
 		ret	nz
 		print	msg_separator
@@ -2217,7 +2295,8 @@ print_totals.word:
 ; msg_files		after any other count
 ; month_lengths		the days in each month, February at 28
 ; msg_extracting, msg_skipping, msg_ok, msg_crc_error, msg_exists,
-; msg_colon, msg_not_yet	extracting's words, put together per member
+; msg_colon, msg_not_yet, msg_separator, msg_as
+;			extracting's words, put together per member
 ; method_lh0		the one method extracted in this phase
 ; msg_space_need, msg_space_free, msg_space_on, msg_space_drive
 ;			the shortage, with the amounts and the drive
@@ -2305,6 +2384,7 @@ msg_crc_error:	defb	" CRC error",CHR_CR,CHR_LF,"$"
 msg_exists:	defb	": it already exists",CHR_CR,CHR_LF,"$"
 msg_colon:	defb	": $"
 msg_separator:	defb	PATH_SEPARATOR,"$"
+msg_as:		defb	" as $"
 msg_not_yet:	defb	" is not supported yet",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
 msg_space_need:	defb	"Extracting this archive would take $"

@@ -159,6 +159,13 @@ paths.lzh
     doubled separators; a file CLASH and then CLASH\F.TXT; a hidden
     -lhd- member HID; and a path of more than 63 characters
     sha256 ae58067e5f42398b4e4e26ada13c5feb187000065ce8628cfbd135fb8c80895c
+lfn.lzh
+    made for Tsuzura by a Python script (note 014), level 0, stored:
+    names that do not fit 8.3 (long, with a space, with "+", with two
+    periods, with a leading period, with a 4-letter extension), one
+    LONGFI~1.TXT stored as it is, a -lhd- member and two files in "Long
+    Directory Name", and collision01.txt to collision11.txt
+    sha256 aa9e32aca78bcba11f1d86ec1c42b6dfc773a0abb6333d81bc711d2d01a23d9b
 
 The archives from lhasa are distributed under its licence:
 

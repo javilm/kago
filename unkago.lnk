@@ -3,6 +3,7 @@ unkago.tro			; the entry point comes first
 lzh.tro				; reading LZH archives
 crc.tro				; the CRC-16
 lh5.tro				; the -lh5- decoder
+names.tro			; the MSX-DOS names
 common.tro			; shared with KAGO and MAPTEST
 alloc.tro			; MapperHeap
 

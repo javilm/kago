@@ -12,6 +12,7 @@ tatara /q src\unkago.as unkago.tro
 tatara /q src\lzh.as lzh.tro
 tatara /q src\crc.as crc.tro
 tatara /q src\lh5.as lh5.tro
+tatara /q src\names.as names.tro
 tatara /q src\common.as common.tro
 tatara /q src\alloc.as alloc.tro
 tatara /q src\maptest.as maptest.tro

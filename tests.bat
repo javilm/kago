@@ -222,6 +222,24 @@ dir tests\out\dirs\tree\sub>>tests\dates.txt
 dir tests\out\paths>>tests\dates.txt
 dir /h tests\out\paths>>tests\dates.txt
 
+rem LONG NAMES runs in TESTS\OUT and extracts into TESTS\OUT\LFN and
+rem LSEL: names that do not fit 8.3, shortened the VFAT way, their ~N
+rem from the archive alone, whichever members are asked for. What LFN
+rem holds goes into TESTS\DATES.TXT.
+echo === UNKAGO LONG NAMES>>tests\results.txt
+cd tests\out
+echo --- unkago /L ..\unkago\lfn.lzh>>..\results.txt
+..\..\build\unkago /L ..\unkago\lfn.lzh>>..\results.txt
+echo --- unkago /O /D:lfn ..\unkago\lfn.lzh>>..\results.txt
+..\..\build\unkago /O /D:lfn ..\unkago\lfn.lzh>>..\results.txt
+echo --- unkago /D:lfn ..\unkago\lfn.lzh>>..\results.txt
+..\..\build\unkago /D:lfn ..\unkago\lfn.lzh>>..\results.txt
+echo --- unkago /O /D:lsel ..\unkago\lfn.lzh collision11.txt>>..\results.txt
+..\..\build\unkago /O /D:lsel ..\unkago\lfn.lzh collision11.txt>>..\results.txt
+cd ..\..
+dir tests\out\lfn>>tests\dates.txt
+dir tests\out\lfn\longdi~1>>tests\dates.txt
+
 rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
 rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves
 rem too little, and UNKAGO must refuse; with more memory it extracts.
