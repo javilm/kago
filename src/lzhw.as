@@ -3,7 +3,8 @@
 ; KAGO describes each member in lzhw.as's variables: its path, its size,
 ; its data's CRC-16, its MS-DOS date and time and its attributes; then
 ; lzhw_header makes the header from them, ready to be written in front
-; of the data. Every member is stored (-lh0-) until the compressor comes.
+; of the data. Every file is stored (-lh0-) until the compressor comes;
+; a directory is -lhd-, its path all directories and its name empty.
 ;
 ; A level 2 header is a fixed part of 26 bytes, then extended headers,
 ; each one its type, its data and the next one's size (lzh.as reads
@@ -28,6 +29,7 @@
 ; the last extended header, as LHA does.
 
 		public	lzhw_header
+		public	lzhw_method
 		public	lzhw_path
 		public	lzhw_dir
 		public	lzhw_length
@@ -54,10 +56,11 @@ PATH_SEPARATOR	equ	5Ch		; "\" in lzhw_path
 ;   by copy_dirs, which turns each "\" into 0FFh. Last, the header's own
 ;   CRC, over all of it with that CRC at 0.
 ;
-;   The name is never empty: it is a name MSX-DOS found.
+;   A directory's name is empty: its extended header 01h is there all
+;   the same, 3 bytes, as LHA writes it.
 ;
-; Input:	lzhw_path, lzhw_dir, lzhw_length, lzhw_size, lzhw_crc,
-;		lzhw_date, lzhw_attr
+; Input:	lzhw_method, lzhw_path, lzhw_dir, lzhw_length, lzhw_size,
+;		lzhw_crc, lzhw_date, lzhw_attr
 ; Output:	DE -> the header, in lzhw_buffer
 ;		HL = its length
 ;		crc_value: the header's CRC (crc.as)
@@ -68,7 +71,7 @@ PATH_SEPARATOR	equ	5Ch		; "\" in lzhw_path
 ; Scratch:	none
 
 lzhw_header:
-		ld	hl,method_lh0	; the method
+		ld	hl,lzhw_method	; the method
 		ld	de,lzhw_buffer+2
 		ld	bc,5
 		ldir
@@ -112,7 +115,11 @@ lzhw_header:
 		add	hl,de		; HL -> the name
 		ld	de,lzhw_buffer+32
 		ld	b,0
+		ld	a,c
+		or	a
+		jr	z,lzhw_header.named	; a directory: no name
 		ldir
+lzhw_header.named:
 		ld	a,(lzhw_dir)	; type 02h, when there are directories
 		or	a
 		jr	z,lzhw_header.attributes
@@ -374,17 +381,16 @@ times_add.next:
 
 ; Constants for the routines above:
 ;
-; method_lh0		the method: stored
 ; month_days		the days in the year before each month,
 ;			February at 28
 ;
-method_lh0:	defb	"-lh0-"
 month_days:	defw	0,31,59,90,120,151,181,212,243,273,304,334
 
 		dseg
 
 ; Variables: the member, as KAGO describes it, and the header:
 ;
+; lzhw_method		the method, 5 characters: "-lh0-", "-lhd-"
 ; lzhw_path		the member's path, "\" between its parts, as it
 ;			is stored: the directories, then the name
 ; lzhw_dir		the directories' length, each with its "\": 0
@@ -401,6 +407,7 @@ month_days:	defw	0,31,59,90,120,151,181,212,243,273,304,334
 ; unix_year ... unix_second
 ;			unix_time: the date's parts, a byte each
 ;
+lzhw_method:	defs	5
 lzhw_path:	defs	144
 lzhw_dir:	defs	1
 lzhw_length:	defs	2

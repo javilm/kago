@@ -577,6 +577,7 @@ Extracting HID.TXT OK
 Extracting A$B.TXT OK
 Extracting SUB\ OK
 Extracting SUB\IN.TXT OK
+Extracting SUB\DEEP\ OK
 --- kago k1.lzh kin\*.*
 Adding KIN\A.TXT OK
 Adding KIN\BIG.DAT OK
@@ -584,7 +585,9 @@ Adding KIN\EMPTY.DAT OK
 Adding KIN\RO.TXT OK
 Adding KIN\HID.TXT OK
 Adding KIN\A$B.TXT OK
-Skipping KIN\SUB: a directory
+Adding KIN\SUB\ OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
 --- unkago /L k1.lzh
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
@@ -594,8 +597,11 @@ Skipping KIN\SUB: a directory
         12         12 -lh0-  2100-03-01 00:00 KIN\RO.TXT
          9          9 -lh0-  2106-02-07 06:28 KIN\HID.TXT
         23         23 -lh0-  2099-12-31 23:59 KIN\A$B.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\
+        13         13 -lh0-  2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\DEEP\
 ---------- ---------- ------                  ------------
-     70062      70062        6 files
+     70075      70075        9 files
 --- unkago /O /D:kout k1.lzh
 Extracting KIN\A.TXT OK
 Extracting KIN\BIG.DAT OK
@@ -603,14 +609,16 @@ Extracting KIN\EMPTY.DAT OK
 Extracting KIN\RO.TXT OK
 Extracting KIN\HID.TXT OK
 Extracting KIN\A$B.TXT OK
+Extracting KIN\SUB\ OK
+Extracting KIN\SUB\IN.TXT OK
+Extracting KIN\SUB\DEEP\ OK
 --- kago k1.lzh kin\a.txt
 k1.lzh already exists.
 --- kago k2.lzh
 
 *** Missing parameter
---- kago k2.lzh nosuch.txt kin\sub
+--- kago k2.lzh nosuch.txt
 Skipping nosuch.txt: File not found
-Skipping KIN\SUB: a directory
 Nothing to add: k2.lzh was not written.
 --- kago k2.lzh ..\kago\kin.lzh
 Skipping ..\kago\kin.lzh: a path with .. cannot be stored
@@ -637,6 +645,18 @@ Adding KIN\RO.TXT OK
         12         12 -lh0-  2100-03-01 00:00 KIN\RO.TXT
 ---------- ---------- ------                  ------------
         30         30        2 files
+--- kago k3.lzh kin\sub
+Adding KIN\SUB\ OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
+--- unkago /L k3.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\
+        13         13 -lh0-  2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\DEEP\
+---------- ---------- ------                  ------------
+        13         13        3 files
 --- kago kout\kin\self.lzh kout\kin\*.*
 Adding KOUT\KIN\A.TXT OK
 Adding KOUT\KIN\BIG.DAT OK
@@ -644,6 +664,9 @@ Adding KOUT\KIN\EMPTY.DAT OK
 Adding KOUT\KIN\RO.TXT OK
 Adding KOUT\KIN\HID.TXT OK
 Adding KOUT\KIN\A$B.TXT OK
+Adding KOUT\KIN\SUB\ OK
+Adding KOUT\KIN\SUB\IN.TXT OK
+Adding KOUT\KIN\SUB\DEEP\ OK
 --- unkago /L kout\kin\self.lzh
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
@@ -653,8 +676,11 @@ Adding KOUT\KIN\A$B.TXT OK
         12         12 -lh0-  2100-03-01 00:00 KOUT\KIN\RO.TXT
          9          9 -lh0-  2106-02-07 06:28 KOUT\KIN\HID.TXT
         23         23 -lh0-  2099-12-31 23:59 KOUT\KIN\A$B.TXT
+         0          0 -lhd-  2026-10-07 10:00 KOUT\KIN\SUB\
+        13         13 -lh0-  2026-10-07 10:00 KOUT\KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KOUT\KIN\SUB\DEEP\
 ---------- ---------- ------                  ------------
-     70062      70062        6 files
+     70075      70075        9 files
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

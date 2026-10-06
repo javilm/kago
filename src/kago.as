@@ -1,5 +1,5 @@
 ; kago.as - KAGO, the compressor. It writes LZH archives, every member
-; stored, of the files named on the command line.
+; stored, of the files and directory trees named on the command line.
 ;
 ; It checks for MSX-DOS2 and the command line, and chooses the format:
 ; /F: names it, or the archive's extension does. Only LZH is written so
@@ -9,9 +9,11 @@
 ; found is added, its path as typed less the drive (word_dirs), its
 ; date, time and attributes, its data stored and its CRC-16 computed on
 ; the way. The header goes in front of the data, written again once the
-; CRC and the size are known (lzhw.as makes it). The archive itself, if
-; a name matches it, is passed over. An archive nothing was added to is
-; deleted. Any MSX-DOS error stops, the archive deleted.
+; CRC and the size are known (lzhw.as makes it). A directory found is
+; added whole: a -lhd- member, then everything in it, at every depth
+; (add_tree). The archive itself, if a name matches it, is passed over.
+; An archive nothing was added to is deleted. Any MSX-DOS error stops,
+; the archive deleted.
 
 		include	common.inc	; common.as's routines, and print
 		include	crc.inc		; crc.as: the CRC-16
@@ -31,6 +33,9 @@ FIB_TIME	equ	15		;   attributes; the time and the
 FIB_CLUSTER	equ	19		;   date words; the first cluster;
 FIB_SIZE	equ	21		;   the size, 4 bytes; the drive
 FIB_DRIVE	equ	25
+MAX_DEPTH	equ	32		; add_tree's depth: MSX-DOS2's paths
+					;   are 63 characters at most, so 31
+					;   directories deep
 FORMAT_LZH	equ	0		; format_name's answers
 FORMAT_PMA	equ	1
 FORMAT_ZIP	equ	2
@@ -384,10 +389,10 @@ add_word.refused:
 		print	msg_dotdot
 		ret
 
-; add_entry - add the entry just found, if it is a file.
+; add_entry - add the entry just found.
 ;
 ;   "." and "..", and the archive itself, are passed over without a
-;   line; a directory says it is skipped, for now. A file is opened
+;   line; a directory is added whole (add_tree). A file is opened
 ;   through its FIB; its header is written as far as it is known (the
 ;   CRC still 0), then its data, COPY_SIZE bytes at a time, the CRC
 ;   computed and the bytes counted on the way; then the header again,
@@ -427,18 +432,11 @@ add_entry.same:
 		ret			; it is: passed over
 add_entry.file:
 		call	entry_path	; lzhw_path, lzhw_length
-		ld	a,(fib+FIB_ATTRIBUTES)
-		ld	(lzhw_attr),a
-		ld	hl,fib+FIB_TIME	; the time and the date
-		ld	de,lzhw_date
-		ld	bc,4
+		call	entry_details	; the size, for the line and for now
+		ld	hl,method_lh0	; stored
+		ld	de,lzhw_method
+		ld	bc,5
 		ldir
-		ld	hl,fib+FIB_SIZE	; the size: for the line, and for now
-		ld	de,lzhw_size
-		ld	bc,4
-		ldir
-		ld	hl,0		; the CRC: for now
-		ld	(lzhw_crc),hl
 		ld	de,fib
 		ld	a,1		; open mode: no writing
 		dos	_OPEN		; B = the handle
@@ -523,11 +521,149 @@ add_entry.copied:
 add_entry.directory:
 		ld	a,(fib+FIB_NAME)	; "." and "..": passed over
 		cp	"."
-		ret	z
-		call	entry_path
-		print	msg_skipping
+		ret	z		; and on into add_tree otherwise
+
+; add_tree - add a directory: its own -lhd- member, then everything in
+;   it, at every depth.
+;
+;   Its path is the directories so far and its name, then a "\": all of
+;   it directories, the name empty, as LHA stores a directory. Then
+;   everything in it is found as add_word finds a word's entries, with
+;   _FFIRST given the directory's FIB and an empty name, and each entry
+;   goes to add_entry, which comes back here for a directory inside it.
+;   The FIB being searched is kept in fib_stack while that happens
+;   (fib_push), and put back after (fib_pop), so the search goes on;
+;   lzhw_dir, kept on the stack, is put back too. MSX-DOS2's paths of
+;   63 characters at most keep it within MAX_DEPTH: deeper, _FFIRST
+;   refuses, and the program stops on its error.
+;
+; Input:	fib: the directory
+;		lzhw_path, lzhw_dir: the directories so far
+; Output:	the directory, and all in it, added
+;		added: counted
+; Modifies:	everything
+; Scratch:	none
+
+add_tree:
+		call	entry_path	; lzhw_path: the directories, the name
+		ld	hl,(lzhw_length)	; then a "\"
+		ld	de,lzhw_path
+		add	hl,de
+		ld	(hl),PATH_SEPARATOR
+		ld	hl,(lzhw_length)
+		inc	hl
+		ld	(lzhw_length),hl
+		ld	a,(lzhw_dir)	; the directories so far, for after
+		push	af
+		ld	a,l		; all of it directories now
+		ld	(lzhw_dir),a
+		call	entry_details
+		ld	hl,method_lhd
+		ld	de,lzhw_method
+		ld	bc,5
+		ldir
+		call	lzhw_header	; no data: written once
+		call	archive_write
+		print	msg_adding
 		call	print_member
-		print	msg_directory
+		print	msg_ok
+		ld	hl,(added)
+		inc	hl
+		ld	(added),hl
+		call	fib_push	; HL -> the directory's FIB, kept
+		ex	de,hl
+		ld	hl,no_name	; everything in it
+		ld	b,16h		; hidden, system, directories
+		ld	ix,fib
+		dos	_FFIRST
+add_tree.found:
+		or	a
+		jr	nz,add_tree.searched
+		call	add_entry
+		ld	ix,fib
+		dos	_FNEXT
+		jr	add_tree.found
+add_tree.searched:
+		cp	.NOFIL
+		jp	nz,fail
+		call	fib_pop		; the search it was found by, back
+		pop	af
+		ld	(lzhw_dir),a
+		ret
+
+; entry_details - the member's attributes, date, time and size, from
+;   the FIB; its CRC 0, for now.
+;
+; Input:	fib
+; Output:	lzhw_attr, lzhw_date, lzhw_size, lzhw_crc
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+entry_details:
+		ld	a,(fib+FIB_ATTRIBUTES)
+		ld	(lzhw_attr),a
+		ld	hl,fib+FIB_TIME	; the time and the date
+		ld	de,lzhw_date
+		ld	bc,4
+		ldir
+		ld	hl,fib+FIB_SIZE
+		ld	de,lzhw_size
+		ld	bc,4
+		ldir
+		ld	hl,0
+		ld	(lzhw_crc),hl
+		ret
+
+; fib_push, fib_pop - keep fib in fib_stack, one level deeper, and
+;   put it back.
+;
+;   fib_slot gives the place of level depth: fib_stack + 64 x depth.
+;
+; Input:	fib, depth
+; Output:	fib_push: HL -> the copy kept; depth one more
+;		fib_pop: fib as it was kept; depth one less
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+fib_push:
+		call	fib_slot
+		push	hl
+		ex	de,hl
+		ld	hl,fib
+		ld	bc,64
+		ldir
+		ld	hl,depth
+		inc	(hl)
+		pop	hl
+		ret
+
+fib_pop:
+		ld	hl,depth
+		dec	(hl)
+		call	fib_slot
+		ld	de,fib
+		ld	bc,64
+		ldir
+		ret
+
+fib_slot:
+		ld	a,(depth)
+		ld	l,a
+		ld	h,0
+		add	hl,hl		; times 64
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		ld	de,fib_stack
+		add	hl,de
 		ret
 
 ; word_dirs - the directories of a word on the command line, as the
@@ -825,9 +961,11 @@ fail_closed:
 ; msg_exists		after the archive's name, when it exists
 ; msg_nothing, msg_not_written
 ;			around the archive's name, when nothing was added
-; msg_adding, msg_ok, msg_skipping, msg_colon, msg_crlf, msg_directory,
-; msg_dotdot		adding's words, put together per member
-; end_mark		the 0 byte that ends an archive
+; msg_adding, msg_ok, msg_skipping, msg_colon, msg_crlf, msg_dotdot
+;			adding's words, put together per member
+; method_lh0, method_lhd	the methods: stored, a directory
+; no_name, end_mark	a 0 byte: the empty name, for "everything in
+;			it", and the end of an archive
 ;
 switch_letters:	defb	"FYQV?",0
 msg_need_dos2:	defb	"ERROR: KAGO needs MSX-DOS2 or Nextor."
@@ -885,9 +1023,11 @@ msg_ok:		defb	" OK",CHR_CR,CHR_LF,"$"
 msg_skipping:	defb	"Skipping $"
 msg_colon:	defb	": $"
 msg_crlf:	defb	CHR_CR,CHR_LF,"$"
-msg_directory:	defb	": a directory",CHR_CR,CHR_LF,"$"
 msg_dotdot:	defb	": a path with .. cannot be stored"
 		defb	CHR_CR,CHR_LF,"$"
+method_lh0:	defb	"-lh0-"
+method_lhd:	defb	"-lhd-"
+no_name:
 end_mark:	defb	0
 
 		dseg
@@ -909,9 +1049,13 @@ end_mark:	defb	0
 ; dirs_from, dirs_end, part_from
 ;			word_dirs: where the word's directories start
 ;			and end, and where the part being read starts
+; depth			add_tree: how many directories deep
 ; copy_buffer		the data, COPY_SIZE bytes at a time, in the
 ;			buffers segment, which the program file does not
 ;			carry
+; fib_stack		add_tree: each directory's FIB, kept while what
+;			is in it is added; MAX_DEPTH of 64 bytes, in the
+;			buffers segment
 ;
 archive_name:	defs	128
 archive_handle:	defs	1
@@ -928,9 +1072,11 @@ chunk:	defs	2
 dirs_from:	defs	2
 dirs_end:	defs	2
 part_from:	defs	2
+depth:	defs	1
 
 		dseg	buffers
 copy_buffer:	defs	COPY_SIZE
+fib_stack:	defs	MAX_DEPTH*64
 
 		end	main
 

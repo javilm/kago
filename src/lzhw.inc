@@ -2,6 +2,7 @@
 ; describe the member it makes a header for.
 
 		extrn	lzhw_header	; DE -> the header, HL = its length
+		extrn	lzhw_method	; 5 characters: "-lh0-", "-lhd-"
 		extrn	lzhw_path	; the member's path, "\" between parts
 		extrn	lzhw_dir	; the directories' length, a byte
 		extrn	lzhw_length	; the path's length, a word

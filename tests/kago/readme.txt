@@ -17,8 +17,9 @@ kin.lzh
       A$B.TXT        23 bytes  2099-12-31 23:59:58
       SUB\         a directory 2026-10-07 10:00:00
       SUB\IN.TXT     13 bytes  2026-10-07 10:00:02
+      SUB\DEEP\    a directory 2026-10-07 10:00:04  hidden, empty
     The dates are the edges of KAGO's arithmetic: 1980, the first MS-DOS
     date; a 29 February; 2100, which is not a leap year; and the last
     even second that 32 bits of seconds since 1970 hold.
-    sha256 fcd4fc3b1927fd8a9f51197faa433a359467d98771ccc8f2ef18c65ef23628a4
+    sha256 f3e7311e0a58243b6a2f9da51d72eab40dfb8727fffef1cabe23f1958071cf86
 
