@@ -56,8 +56,6 @@ build\unkago /F:LZH x.lzh>>tests\results.txt
 echo --- unkago /Y>>tests\results.txt
 build\unkago /Y>>tests\results.txt
 
-echo --- unkago tests\unkago\multi0.lzh>>tests\results.txt
-build\unkago tests\unkago\multi0.lzh>>tests\results.txt
 echo --- unkago /L tests\unkago\nosuch.lzh>>tests\results.txt
 build\unkago /L tests\unkago\nosuch.lzh>>tests\results.txt
 echo --- unkago /L tests\unkago\multi0.lzh>>tests\results.txt
@@ -90,6 +88,35 @@ echo --- unkago /L tests\unkago\notlzh.txt>>tests\results.txt
 build\unkago /L tests\unkago\notlzh.txt>>tests\results.txt
 echo --- unkago /L tests\unkago\empty.lzh>>tests\results.txt
 build\unkago /L tests\unkago\empty.lzh>>tests\results.txt
+
+rem EXTRACTING runs in TESTS\OUT, where the files are left for the
+rem Mac to compare. READONLY.DAT is left read-only, so it is made
+rem writable first, for /O to replace it.
+echo === UNKAGO EXTRACTING>>tests\results.txt
+attrib -r tests\out\readonly.dat
+cd tests\out
+echo --- unkago /O ..\unkago\multi0.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\multi0.lzh>>..\results.txt
+echo --- unkago ..\unkago\multi0.lzh>>..\results.txt
+..\..\build\unkago ..\unkago\multi0.lzh>>..\results.txt
+echo --- unkago /O ..\unkago\l1lh0.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\l1lh0.lzh>>..\results.txt
+echo --- unkago /O ..\unkago\big1.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\big1.lzh>>..\results.txt
+echo --- unkago /O ..\unkago\date2.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\date2.lzh>>..\results.txt
+echo --- unkago /O ..\unkago\readonly.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\readonly.lzh>>..\results.txt
+echo --- unkago /O ..\unkago\badcrc.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\badcrc.lzh>>..\results.txt
+echo --- unkago /O ..\unkago\l2lh5.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\l2lh5.lzh>>..\results.txt
+echo --- unkago /O ..\unkago\cutdata.lzh>>..\results.txt
+..\..\build\unkago /O ..\unkago\cutdata.lzh>>..\results.txt
+echo --- del readonly.dat>>..\results.txt
+del readonly.dat>>..\results.txt
+cd ..\..
+dir tests\out>tests\dates.txt
 
 echo === MAPTEST>>tests\results.txt
 echo --- maptest>>tests\results.txt

@@ -6,6 +6,8 @@ real archives made by the tools named. The names in the expected
 listings were checked against lhasa 0.4.0's own listings; the copy of
 lhasa this project keeps is reference\lhasa, at commit 75ed835.
 
+What UNKAGO extracts from them lands in tests\out\ (see tests.bat).
+
 multi0.lzh
     made for Tsuzura with LHa for Java (jlha-utils), level 0: README.TXT,
     A$B.TXT and EMPTY.DAT, stored (-lh0-)
@@ -53,6 +55,26 @@ notlzh.txt
 empty.lzh
     an empty file, 0 bytes
     sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+l1lh0.lzh
+    lhasa test/archives/lha213/lh0.lzh: LHA 2.13, level 1, stored: GPL-2.GZ
+    sha256 f240fe79ebbcba82fa3fd10421a5a7678d0d2aa2ed374e0f79bb574a59bedbf1
+big1.lzh
+    made for Tsuzura: level 1, BIG.DAT, 20000 random bytes (Python's
+    random, seed 2026), stored: more than copy_buffer holds
+    sha256 9683e0f90ae9f8583fe321d739e557f37c1be462e80b6ccf07f9395a380ea7f9
+date2.lzh
+    made for Tsuzura: level 2, DATE2.DAT, stored, dated
+    2001-02-03 04:05:06 UTC
+    sha256 5d7eb457e36c1871c11931bc3f3f7b64641f3b1c7225569afc2dcfe7a6ede28c
+readonly.lzh
+    made for Tsuzura: level 0, READONLY.DAT, stored, with the
+    attribute byte set to 21h (read-only, archive) and the checksum
+    fixed to match
+    sha256 63aac7d487368c36db274ee31d32af94731544fa47e3f5b8bbcffb4a911ad5ee
+badcrc.lzh
+    made for Tsuzura: level 0, BADCRC.DAT, stored, with one bit of
+    the data flipped: the CRC no longer matches
+    sha256 3585a04a6788fe4d3928a700e7f8fcf2d4e8a28d6c5af7e84d1da9b8210557b4
 
 The archives from lhasa are distributed under its licence:
 

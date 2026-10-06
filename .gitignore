@@ -12,7 +12,13 @@
 *.map
 results.txt
 results.old
+dates.txt
 dist/
+
+# What the extraction tests leave behind, but for _keep.txt, which
+# keeps the directory
+tests/out/*
+!tests/out/_keep.txt
 
 # ...except the pair we ship built
 !build/kago.com

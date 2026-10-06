@@ -15,6 +15,8 @@
 		public	divide_by_c
 		public	format_padded
 		public	format_number
+		public	print_zero
+		public	print_explanation
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	ascii.inc	; CHR_SPACE, CHR_TAB
@@ -350,6 +352,55 @@ format_number.done:
 		pop	ix
 		ret
 
+; print_zero - write the zero-terminated string at DE to standard
+;   output.
+;
+; Input:	DE -> the string, ending in 0
+; Output:	it is written to standard output
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+print_zero:
+		ld	h,d
+		ld	l,e
+		ld	bc,0
+print_zero.measure:
+		ld	a,(hl)
+		or	a
+		jr	z,print_zero.write
+		inc	hl
+		inc	bc
+		jr	print_zero.measure
+print_zero.write:
+		ld	h,b		; HL = the length
+		ld	l,c
+		jp	print_length
+
+; print_explanation - write MSX-DOS2's message for an error code to
+;   standard output, without a new line.
+;
+;   _EXPLAIN gives the message COMMAND2 would print, zero-terminated, in
+;   a 64-byte buffer.
+;
+; Input:	A = the MSX-DOS error code
+; Output:	the message is written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+print_explanation:
+		ld	b,a
+		ld	de,explain_text
+		call	safe_p2restore
+		system	_EXPLAIN
+		ld	de,explain_text
+		jp	print_zero
+
 ; safe_p2restore - p2restore, keeping the registers it would destroy.
 ;
 ;   MapperHeap's rule: page 2 belongs to MSX-DOS whenever MSX-DOS runs,
@@ -363,9 +414,9 @@ format_number.done:
 ;   Until heapinit has run, p2restore returns at once, so this is safe
 ;   from the first instruction of a program, under MSX-DOS1 included.
 ;
-;   IX and IY are not kept: p2restore's header does not name them, and
-;   no MSX-DOS call made so far takes a parameter in them. To be checked
-;   when the first one does.
+;   IX is kept too, since note 006: _FTIME takes the time in IX, and
+;   p2restore calls ENASLT, which may not keep it. IY is not kept: no
+;   MSX-DOS call made so far takes a parameter in it.
 ;
 ; Input:	none
 ; Output:	page 2 belongs to MSX-DOS
@@ -377,12 +428,22 @@ safe_p2restore:
 		push	bc
 		push	de
 		push	hl
+		push	ix
 		call	p2restore
+		pop	ix
 		pop	hl
 		pop	de
 		pop	bc
 		pop	af
 		ret
+
+		dseg
+
+; Variables for print_explanation:
+;
+; explain_text		_EXPLAIN's message: 64 bytes, zero-terminated
+;
+explain_text:	defs	64
 
 		end
 

@@ -7,9 +7,9 @@
 ; read. The layouts follow lhasa (reference/lhasa, lib/lha_file_header.c
 ; and lib/ext_header.c), which reads all three the same way.
 ;
-; Phase 1 keeps what the listing needs: the name, the method, the
-; packed and original sizes, the date and the level. Directories and
-; CRCs come later.
+; It keeps what listing and extracting need: the name, the method, the
+; packed and original sizes, the date, the level, the data's CRC and
+; the MS-DOS attributes. Directories come later.
 
 LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 
@@ -23,6 +23,9 @@ LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 		public	lzh_original
 		public	lzh_time
 		public	lzh_level
+		public	lzh_crc
+		public	lzh_attributes
+		public	lzh_read
 
 		include	lzh.inc		; the results
 		include	common.inc	; dos
@@ -38,6 +41,7 @@ COMMON_SIZE	equ	22		; what is read first: enough for the
 					;   level byte, at offset 20, and
 					;   level 0/1's name length, at 21
 EXT_FILENAME	equ	01h		; extended header type: the file name
+EXT_ATTRIBUTES	equ	40h		; and the MS-DOS attributes
 
 		cseg
 
@@ -142,6 +146,8 @@ lzh_next_header.not_end:
 		ldir
 		ld	a,(lzh_header+20)
 		ld	(lzh_level),a
+		ld	a,(lzh_header+19)	; the attributes: byte 19,
+		ld	(lzh_attributes),a	;   unless type 40h gives them
 		ld	a,(lzh_header+20)
 		cp	2
 		jp	z,read_level2
@@ -226,6 +232,16 @@ read_level01.sum:
 		ld	de,lzh_name
 		ldir
 read_level01.named:
+		ld	a,(lzh_header+21)	; the CRC: after the name
+		ld	e,a
+		ld	d,0
+		ld	hl,lzh_header+COMMON_SIZE
+		add	hl,de
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		ld	(lzh_crc),hl
 		ld	a,(lzh_header+20)
 		or	a
 		ret	z		; level 0: done, A = LZH_MEMBER
@@ -272,6 +288,8 @@ read_level2:
 		call	read_exact
 		or	a
 		ret	nz
+		ld	hl,(lzh_header+21)	; the CRC, at 21
+		ld	(lzh_crc),hl
 		ld	hl,0		; no name until type 1 gives one
 		ld	(lzh_name_length),hl
 		xor	a
@@ -356,6 +374,8 @@ read_ext_chain.type:
 		or	a
 		ret	nz
 		ld	a,(ext_type)
+		cp	EXT_ATTRIBUTES
+		jr	z,read_ext_chain.attributes
 		cp	EXT_FILENAME
 		jr	nz,read_ext_chain.skip
 		ld	hl,(ext_data)	; the name: up to 255 bytes of it
@@ -394,6 +414,19 @@ read_ext_chain.size:
 read_ext_chain.damaged:
 		ld	a,LZH_DAMAGED
 		ret
+read_ext_chain.attributes:
+		ld	hl,(ext_data)	; the low byte of its word
+		ld	a,h
+		or	l
+		jr	z,read_ext_chain.skip	; empty: nothing to take
+		dec	hl
+		ld	(ext_data),hl	; what is left to skip
+		ld	de,lzh_attributes
+		ld	hl,1
+		call	read_exact
+		or	a
+		ret	nz
+		jr	read_ext_chain.skip
 
 ; lzh_skip_data - skip the data of the member just read.
 ;
@@ -458,6 +491,8 @@ read_bytes.eof:
 
 ; read_exact - read exactly HL bytes from the archive.
 ;
+;   Public as lzh_read: extracting reads a member's data with it.
+;
 ; Input:	DE -> where to put them
 ;		HL = how many
 ; Output:	A = 0, they were read
@@ -469,6 +504,7 @@ read_bytes.eof:
 ;		HL
 ; Scratch:	none
 
+lzh_read:
 read_exact:
 		push	hl
 		call	read_bytes
@@ -533,6 +569,8 @@ seek:
 ;			words (levels 0, 1), or seconds since 1970 UTC
 ;			(level 2)
 ; lzh_level		the header's level, 0 to 2
+; lzh_crc		the CRC-16 of the member's data, from the header
+; lzh_attributes	the MS-DOS attributes: byte 19, or type 40h
 ; lzh_rest		read_level2: the header after its base
 ; lzh_header		the base header: 22 bytes, then the rest of a
 ;			level 0 or 1 header, up to 257 in all
@@ -551,6 +589,8 @@ lzh_packed:	defs	4
 lzh_original:	defs	4
 lzh_time:	defs	4
 lzh_level:	defs	1
+lzh_crc:	defs	2
+lzh_attributes:	defs	1
 lzh_rest:	defs	2
 lzh_header:	defs	257
 

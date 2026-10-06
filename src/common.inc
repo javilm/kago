@@ -16,6 +16,8 @@
 		extrn	divide_by_c
 		extrn	format_padded
 		extrn	format_number
+		extrn	print_zero
+		extrn	print_explanation
 
 		include	alloc.inc	; MapperHeap: heapinit, p2restore...
 

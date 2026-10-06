@@ -1,6 +1,7 @@
 ; unkago.lnk - the modules of UNKAGO, in link order
 unkago.tro			; the entry point comes first
 lzh.tro				; reading LZH archives
+crc.tro				; the CRC-16
 common.tro			; shared with KAGO and MAPTEST
 alloc.tro			; MapperHeap
 

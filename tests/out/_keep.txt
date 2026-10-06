@@ -1,0 +1,6 @@
+tests\out\ - where tests.bat extracts, for the Mac to compare.
+
+Everything here but this file is left by the last test run, and is not
+committed (see .gitignore). The directory is kept so that tests.bat
+can CD into it.
+

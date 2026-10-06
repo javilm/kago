@@ -115,6 +115,7 @@ Usage: UNKAGO [switches] archive [members...]
   /D:path  extract into path, made if missing:
            B:  B:\TEST  \TEMP  TEMP\FILES
   /L       list the archive, extract nothing
+  /O       overwrite files that already exist
   /Q       quiet: no progress
   /V       the banner above, and nothing else
   /?       this text
@@ -123,7 +124,8 @@ Members may use * and ?. Naming a directory
 extracts everything under it.
 
 --- unkago /D:B:\TEST x.lzh
-UNKAGO cannot extract yet: use /L to list.
+
+*** File not found
 --- unkago /l /q
 
 *** Missing parameter
@@ -137,6 +139,7 @@ Usage: UNKAGO [switches] archive [members...]
   /D:path  extract into path, made if missing:
            B:  B:\TEST  \TEMP  TEMP\FILES
   /L       list the archive, extract nothing
+  /O       overwrite files that already exist
   /Q       quiet: no progress
   /V       the banner above, and nothing else
   /?       this text
@@ -154,8 +157,6 @@ https://github.com/javilm/kago
 --- unkago /Y
 
 *** Invalid option
---- unkago tests\unkago\multi0.lzh
-UNKAGO cannot extract yet: use /L to list.
 --- unkago /L tests\unkago\nosuch.lzh
 
 *** File not found
@@ -240,6 +241,32 @@ The archive ends in the middle of a member.
 Not an LZH archive.
 --- unkago /L tests\unkago\empty.lzh
 Not an LZH archive.
+=== UNKAGO EXTRACTING
+--- unkago /O ..\unkago\multi0.lzh
+Extracting README.TXT OK
+Extracting A$B.TXT OK
+Extracting EMPTY.DAT OK
+--- unkago ..\unkago\multi0.lzh
+Skipping README.TXT: it already exists
+Skipping A$B.TXT: it already exists
+Skipping EMPTY.DAT: it already exists
+--- unkago /O ..\unkago\l1lh0.lzh
+Extracting GPL-2.GZ OK
+--- unkago /O ..\unkago\big1.lzh
+Extracting BIG.DAT OK
+--- unkago /O ..\unkago\date2.lzh
+Extracting DATE2.DAT OK
+--- unkago /O ..\unkago\readonly.lzh
+Extracting READONLY.DAT OK
+--- unkago /O ..\unkago\badcrc.lzh
+Extracting BADCRC.DAT CRC error
+--- unkago /O ..\unkago\l2lh5.lzh
+Skipping gpl-2: -lh5- is not supported yet
+--- unkago /O ..\unkago\cutdata.lzh
+Skipping gpl-2: -lh5- is not supported yet
+The archive ends in the middle of a member.
+--- del readonly.dat
+READONLY.DAT -- Read only file
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

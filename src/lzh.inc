@@ -25,5 +25,8 @@ LZH_LEVEL3	equ	4		; a level 3 header, not read
 		extrn	lzh_original	; 4 bytes
 		extrn	lzh_time	; 4 bytes, by level
 		extrn	lzh_level	; 0 to 2
+		extrn	lzh_crc		; the data's CRC-16
+		extrn	lzh_attributes	; MS-DOS attributes
+		extrn	lzh_read	; read HL bytes into DE
 		endif
 
