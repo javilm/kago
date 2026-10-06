@@ -118,6 +118,27 @@ del readonly.dat>>..\results.txt
 cd ..\..
 dir tests\out>tests\dates.txt
 
+rem DESTINATION AND SPACE uses a 16 KB RAM disk, H:, made here and
+rem removed at the end: A RAM DISK ALREADY THERE IS LOST. What lands on
+rem it is listed in TESTS\DATES.TXT, after TESTS\OUT.
+echo === UNKAGO DESTINATION AND SPACE>>tests\results.txt
+ramdisk 16 /d
+echo --- unkago /O /D:tests\out\d1\d2 tests\unkago\l1lh0.lzh>>tests\results.txt
+build\unkago /O /D:tests\out\d1\d2 tests\unkago\l1lh0.lzh>>tests\results.txt
+echo --- unkago /D: tests\unkago\multi0.lzh>>tests\results.txt
+build\unkago /D: tests\unkago\multi0.lzh>>tests\results.txt
+echo --- unkago /D:H:\NO\DIR tests\unkago\big1.lzh>>tests\results.txt
+build\unkago /D:H:\NO\DIR tests\unkago\big1.lzh>>tests\results.txt
+echo --- unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh>>tests\results.txt
+build\unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh>>tests\results.txt
+echo --- unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh>>tests\results.txt
+build\unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh>>tests\results.txt
+echo --- unkago /D:H: tests\unkago\lie.lzh>>tests\results.txt
+build\unkago /D:H: tests\unkago\lie.lzh>>tests\results.txt
+dir h:\>>tests\dates.txt
+dir h:\new\sub>>tests\dates.txt
+ramdisk 0 /d
+
 echo === MAPTEST>>tests\results.txt
 echo --- maptest>>tests\results.txt
 build\maptest>>tests\results.txt

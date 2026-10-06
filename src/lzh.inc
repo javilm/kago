@@ -16,6 +16,7 @@ LZH_LEVEL3	equ	4		; a level 3 header, not read
 
 		ifndef	LZH_INCLUDED
 		extrn	lzh_open
+		extrn	lzh_rewind
 		extrn	lzh_next_header
 		extrn	lzh_skip_data
 		extrn	lzh_name	; the member's name, as stored

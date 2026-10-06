@@ -4,20 +4,22 @@
 ; It checks for MSX-DOS2 and the command line. With /L it lists the
 ; members of an LZH archive: sizes, method, date and name, one line
 ; each, and the totals. Without it, it extracts the -lh0- members into
-; the current directory, checking each one's CRC-16.
+; the current directory, or the one /D: names, checking first that they
+; fit and then each one's CRC-16.
 
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
 		include	crc.inc		; crc.as: the CRC-16
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
-		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .DKFUL
+		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .DKFUL...
 		include	ascii.inc	; CHR_CR, CHR_LF, CHR_SPACE
 
 LINE_FIXED	equ	46		; a listing line before the name
 TOTAL_FIXED	equ	29		; the totals line before the count
 COPY_SIZE	equ	8192		; copy_buffer: what is read and
 					;   written at a time
+PATH_SEPARATOR	equ	5Ch		; "\", the yen sign on a Japanese MSX
 
 		cseg
 
@@ -29,8 +31,9 @@ COPY_SIZE	equ	8192		; copy_buffer: what is read and
 ;
 ;   Then the archive: the first word that is not a switch. With /L it
 ;   is listed; without /L it is extracted, /O allowing existing files
-;   to be replaced. With no archive named, /L ends with .NOPAR (***
-;   Missing parameter), and a line with neither prints the usage.
+;   to be replaced, /D:path naming where to. With no archive named, /L
+;   ends with .NOPAR (*** Missing parameter), and a line with neither
+;   prints the usage. A /D with no path ends with .NOPAR too.
 ;
 ; Input:	the command line, at COMMAND_TAIL (common.as)
 ; Output:	does not return
@@ -42,7 +45,7 @@ main:
 		jp	c,main.need_dos2	; too far for jr
 		ld	hl,switch_letters
 		call	find_bad_switch	; CY set = a switch it does not take
-		jr	c,main.bad_switch
+		jp	c,main.bad_switch	; too far for jr
 		ld	c,"?"
 		call	switch_given
 		jr	c,main.usage
@@ -76,7 +79,27 @@ main.named:
 		call	switch_given	; CY set: /O
 		sbc	a,a		; A = 0FFh with /O, 0 without
 		ld	(overwrite),a
+		xor	a
+		ld	(dest_path),a	; no /D: the current directory
+		ld	c,"D"
+		call	switch_value	; CY set: HL -> it, B = its length
+		jp	nc,extract_archive
+		ld	a,(hl)		; ":" and at least one character
+		cp	":"
+		jr	nz,main.no_path
+		dec	b
+		jr	z,main.no_path
+		inc	hl
+		ld	de,dest_path
+		ld	c,b
+		ld	b,0
+		ldir
+		xor	a
+		ld	(de),a
 		jp	extract_archive
+main.no_path:
+		ld	b,.NOPAR	; COMMAND2: *** Missing parameter
+		dos	_TERM
 
 main.usage:
 		print	msg_banner
@@ -179,15 +202,20 @@ list_archive.dos_error:
 		dos	_TERM
 
 ; extract_archive - extract the members of the archive named in
-;   archive_name into the current directory.
+;   archive_name, into the current directory or dest_path.
+;
+;   First check_space walks the archive and stops unless it all fits;
+;   then the directories /D: names are created; then the archive is
+;   walked again, extracting.
 ;
 ;   Each member gets one line: extracted and OK, extracted with a CRC
-;   error (and the file deleted), or skipped, with why. A member that
-;   cannot be read, or a write that fails, ends the extraction; the
-;   result goes to report_stop, as for a listing.
+;   error (and the file deleted), or skipped, with why. A write that
+;   fails, a full disk or root directory included, ends the extraction,
+;   and not_extracted names the members left before saying why.
 ;
 ; Input:	archive_name: the archive's name, zero-terminated
 ;		overwrite: not 0 when /O was given
+;		dest_path: where to, zero-terminated; empty for here
 ; Output:	does not return
 ; Modifies:	everything
 ; Scratch:	none
@@ -199,6 +227,18 @@ extract_archive:
 		call	lzh_open
 		or	a
 		jp	nz,report_stop	; not found, say
+		call	check_space	; returns only if it all fits
+		ld	a,1
+		ld	(dest_mode),a	; walk_dest: create
+		xor	a
+		ld	(dest_error),a
+		call	walk_dest
+		ld	a,(dest_error)
+		or	a
+		jp	nz,report_stop	; one could not be created
+		call	lzh_rewind
+		or	a
+		jp	nz,report_stop
 		call	crc_init
 		ld	hl,0
 		ld	(members),hl
@@ -212,37 +252,52 @@ extract_archive.next:
 		call	extract_member	; A = 0, or what stopped it
 		or	a
 		jr	z,extract_archive.next
-		jp	report_stop
+		jp	not_extracted	; the rest, then why
 
 ; extract_member - extract, or skip, the member just read.
 ;
-;   Only -lh0- (stored) members are extracted in this phase. The file is
-;   created with _CREATE's "create new" flag unless /O was given, so an
-;   existing file is never replaced by accident: MSX-DOS2 refuses with
-;   .FILEX. The data is copied through copy_buffer, COPY_SIZE bytes at a
-;   time, its CRC-16 computed on the way; the file is closed, and only
-;   then are its date and attributes set (closing a written file gives
-;   it the current date). A CRC that does not match deletes the file.
+;   Only -lh0- (stored) members are extracted in this phase. The file,
+;   dest_path and the member's name, is created with _CREATE's "create
+;   new" flag unless /O was given, so an existing file is never replaced
+;   by accident: MSX-DOS2 refuses with .FILEX. The data is copied
+;   through copy_buffer, COPY_SIZE bytes at a time, its CRC-16 computed
+;   on the way; the file is closed, and only then are its date and
+;   attributes set (closing a written file gives it the current date).
+;   A CRC that does not match deletes the file. A full disk or root
+;   directory stops, where any other refusal to create only skips.
 ;
 ; Input:	lzh.as's variables: the member just read
 ;		overwrite: not 0 for /O
+;		dest_path
 ; Output:	A = 0: the next member can be read
 ;		A = LZH_TRUNCATED, or an MSX-DOS error code: stop
 ; Modifies:	everything
 ; Scratch:	none
 
 extract_member:
-		ld	hl,lzh_method	; -lh0- only, in this phase
-		ld	de,method_lh0
-		ld	b,5
-extract_member.method:
-		ld	a,(de)
-		cp	(hl)
-		jr	nz,extract_member.unsupported
-		inc	hl
+		call	member_supported	; Z: -lh0-
+		jp	nz,extract_member.unsupported	; too far for jr
+		ld	hl,dest_path	; out_name: dest_path, a "\" if it
+		ld	de,out_name	;   needs one, then the name
+		ld	a,(hl)
+		or	a
+		jr	z,extract_member.name	; no /D
+extract_member.path:
+		ldi
+		ld	a,(hl)
+		or	a
+		jr	nz,extract_member.path
+		dec	de
+		ld	a,(de)		; the path's last character
 		inc	de
-		djnz	extract_member.method
-		ld	de,out_name	; the name, zero-terminated
+		cp	":"
+		jr	z,extract_member.name
+		cp	PATH_SEPARATOR
+		jr	z,extract_member.name
+		ld	a,PATH_SEPARATOR
+		ld	(de),a
+		inc	de
+extract_member.name:
 		ld	bc,(lzh_name_length)
 		ld	a,b
 		or	c
@@ -260,7 +315,11 @@ extract_member.named:
 		ld	de,out_name
 		dos	_CREATE		; B = the handle
 		or	a
-		jr	z,extract_member.created
+		jp	z,extract_member.created	; too far for jr
+		cp	.DKFUL		; no room: stop, not skip
+		ret	z
+		cp	.DRFUL
+		ret	z
 		push	af
 		print	msg_skipping
 		printl	lzh_name,(lzh_name_length)
@@ -371,6 +430,445 @@ extract_member.discard:
 		dos	_DELETE
 		print	msg_crlf
 		pop	af
+		ret
+
+; member_supported - whether the member just read is one this phase
+;   extracts: -lh0- (stored) only.
+;
+; Input:	lzh_method (lzh.as)
+; Output:	Z set = it is
+; Modifies:	AF
+;		B
+;		DE
+;		HL
+; Scratch:	none
+
+member_supported:
+		ld	hl,lzh_method
+		ld	de,method_lh0
+		ld	b,5
+member_supported.next:
+		ld	a,(de)
+		cp	(hl)
+		ret	nz
+		inc	hl
+		inc	de
+		djnz	member_supported.next
+		ret			; Z set from the last CP
+
+; check_space - stop, saying why, unless the extraction fits.
+;
+;   The archive is walked once, and each member that will be extracted
+;   counts its original size, rounded up to whole clusters; a 0-byte
+;   file takes none. Each directory /D: will create takes one cluster
+;   more. The cluster's size and the free clusters come from _ALLOC,
+;   for the drive /D: names or the current one.
+;
+;   A file that exists already counts in full, though without /O it is
+;   skipped and with /O it frees its own space: the estimate errs on the
+;   safe side. A walk that fails (a damaged or cut-off archive, a read
+;   error) ends here, through report_stop, with nothing written.
+;
+; Input:	the archive open, at its start
+;		dest_path
+; Output:	returns only if it fits
+;		cluster_shift: log2 of the cluster's size in bytes
+; Modifies:	everything
+; Scratch:	none
+
+check_space:
+		call	dest_drive	; E = the drive
+		dos	_ALLOC		; A, BC: the cluster; HL: free ones
+		ld	(free_clusters),hl
+		inc	a		; A = 0FFh: no such drive
+		jp	z,check_space.no_drive
+		dec	a
+		ld	d,-1		; D = log2(sectors per cluster)
+check_space.sectors:
+		inc	d
+		srl	a
+		jr	nz,check_space.sectors
+		dec	d		; and + log2(bytes per sector)
+check_space.bytes:
+		inc	d
+		srl	b
+		rr	c
+		ld	a,b
+		or	c
+		jr	nz,check_space.bytes
+		ld	a,d
+		ld	(cluster_shift),a
+		xor	a
+		ld	(dest_mode),a	; walk_dest: count
+		ld	hl,0
+		ld	(new_dirs),hl
+		call	walk_dest
+		ld	hl,(new_dirs)	; a cluster for each directory
+		ld	(need_clusters),hl
+		ld	hl,0
+		ld	(need_clusters+2),hl
+		ld	(members),hl
+check_space.next:
+		call	lzh_next_header
+		or	a
+		jr	nz,check_space.end
+		ld	hl,(members)
+		inc	hl
+		ld	(members),hl
+		call	member_supported	; Z: it will be extracted
+		jr	nz,check_space.skip
+		ld	hl,(lzh_original)
+		ld	de,(lzh_original+2)
+		call	to_clusters	; DE:HL = its clusters
+		ld	bc,(need_clusters)
+		add	hl,bc
+		ld	(need_clusters),hl
+		ex	de,hl
+		ld	bc,(need_clusters+2)
+		adc	hl,bc
+		ld	(need_clusters+2),hl
+check_space.skip:
+		call	lzh_skip_data
+		or	a
+		jr	z,check_space.next
+		jp	report_stop	; cut off, or a read error
+check_space.end:
+		cp	LZH_END
+		jp	nz,report_stop	; damaged, level 3, an error
+		ld	hl,(members)
+		ld	a,h
+		or	l
+		ld	a,LZH_END
+		jp	z,report_stop	; no member at all: not LZH
+		ld	hl,(need_clusters+2)
+		ld	a,h
+		or	l
+		jr	nz,check_space.short	; 64K clusters or more
+		ld	hl,(free_clusters)
+		ld	de,(need_clusters)
+		or	a
+		sbc	hl,de
+		ret	nc		; it fits
+check_space.short:
+		print	msg_space_need
+		ld	hl,(need_clusters)
+		ld	de,(need_clusters+2)
+		ld	a,1		; rounded up
+		call	print_size
+		print	msg_space_free
+		ld	hl,(free_clusters)
+		ld	de,0
+		xor	a		; rounded down
+		call	print_size
+		print	msg_space_on
+		ld	a,(dest_letter)
+		ld	(msg_space_drive),a
+		print	msg_space_drive
+		dos	_TERM0
+check_space.no_drive:
+		ld	a,.IDRV		; COMMAND2: *** Invalid drive
+		jp	report_stop
+
+; to_clusters - a size in bytes, as whole clusters, rounded up.
+;
+; Input:	DE:HL = the size
+;		cluster_shift
+; Output:	DE:HL = the clusters
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+to_clusters:
+		ld	a,(cluster_shift)	; 9 or more
+		ld	b,a
+		ld	c,0		; C = 1 if a 1 bit falls out
+to_clusters.bit:
+		srl	d
+		rr	e
+		rr	h
+		rr	l
+		jr	nc,to_clusters.next
+		ld	c,1
+to_clusters.next:
+		djnz	to_clusters.bit
+		ld	b,0		; part of a cluster: one more
+		add	hl,bc
+		ret	nc
+		inc	de
+		ret
+
+; dest_drive - the drive extracting writes to.
+;
+;   The one dest_path starts with ("B:"), or the current one.
+;
+; Input:	dest_path
+; Output:	E = the drive's number, 1 for A:
+;		dest_letter = its letter
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+dest_drive:
+		ld	hl,dest_path
+		ld	a,(hl)
+		or	a
+		jr	z,dest_drive.current	; no /D
+		inc	hl
+		ld	a,(hl)
+		dec	hl
+		cp	":"
+		jr	nz,dest_drive.current
+		ld	a,(hl)
+		and	0DFh		; a-z to A-Z
+		jr	dest_drive.letter
+dest_drive.current:
+		dos	_CURDRV		; A = 0 for A:
+		add	a,"A"
+dest_drive.letter:
+		ld	(dest_letter),a
+		sub	"A"-1
+		ld	e,a
+		ret
+
+; walk_dest - each directory in dest_path, from the top down: counted,
+;   or created.
+;
+;   With dest_mode 0, a directory _ATTR cannot find adds 1 to new_dirs;
+;   with dest_mode 1 it is created with _CREATE, one that is there
+;   already (.DIRX) being no error. The first other error is kept in
+;   dest_error, and the walk goes on. The drive and a leading "\" are
+;   not directories to make, and neither is an empty part, as in a path
+;   ending in "\".
+;
+; Input:	dest_path
+;		dest_mode
+; Output:	new_dirs, counted; or the directories, and dest_error
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+walk_dest:
+		ld	hl,dest_path
+		ld	a,(hl)
+		or	a
+		ret	z		; no /D: nothing to walk
+		inc	hl
+		ld	a,(hl)
+		dec	hl
+		cp	":"
+		jr	nz,walk_dest.top
+		inc	hl		; past the drive
+		inc	hl
+walk_dest.top:
+		ld	a,(hl)
+		cp	PATH_SEPARATOR
+		jr	nz,walk_dest.start
+		inc	hl		; past the root
+walk_dest.start:
+		ld	d,h		; DE -> where this part starts
+		ld	e,l
+walk_dest.scan:
+		ld	a,(hl)
+		or	a
+		jr	z,walk_dest.part	; the last part, then return
+		cp	PATH_SEPARATOR
+		jr	z,walk_dest.more
+		inc	hl
+		jr	walk_dest.scan
+walk_dest.more:
+		call	walk_dest.part
+		inc	hl
+		jr	walk_dest.start
+walk_dest.part:
+		or	a		; HL -> its end, DE -> its start
+		sbc	hl,de
+		add	hl,de		; Z from the SBC: empty
+		ret	z
+		push	hl
+		ld	a,(hl)
+		push	af
+		ld	(hl),0		; the path down to here
+		ld	de,dest_path
+		ld	a,(dest_mode)
+		or	a
+		jr	nz,walk_dest.create
+		dos	_ATTR		; A = 0: get
+		or	a
+		jr	z,walk_dest.restore	; it is there
+		ld	hl,(new_dirs)
+		inc	hl
+		ld	(new_dirs),hl
+		jr	walk_dest.restore
+walk_dest.create:
+		ld	b,10h		; a subdirectory
+		dos	_CREATE
+		or	a
+		jr	z,walk_dest.restore
+		cp	.DIRX
+		jr	z,walk_dest.restore	; it was there
+		ld	c,a
+		ld	a,(dest_error)
+		or	a
+		jr	nz,walk_dest.restore	; keep the first
+		ld	a,c
+		ld	(dest_error),a
+walk_dest.restore:
+		pop	af
+		pop	hl
+		ld	(hl),a
+		ret
+
+; not_extracted - after extracting stopped part way: a line for each
+;   member not extracted, then the reason, through report_stop.
+;
+;   The member that failed is number members. The archive is walked
+;   again from the start, the members before it passed over, and it and
+;   each one after it named. A walk that fails ends the lines; the reason
+;   given is still what stopped the extraction.
+;
+; Input:	A = what stopped it
+;		members
+; Output:	does not return
+; Modifies:	everything
+; Scratch:	none
+
+not_extracted:
+		ld	(stop_code),a
+		call	lzh_rewind
+		or	a
+		jr	nz,not_extracted.done
+		ld	hl,0
+		ld	(walked),hl
+not_extracted.next:
+		call	lzh_next_header
+		or	a
+		jr	nz,not_extracted.done
+		ld	hl,(walked)
+		inc	hl
+		ld	(walked),hl
+		ld	de,(members)
+		sbc	hl,de		; carry clear from OR A
+		jr	c,not_extracted.skip	; before the one that failed
+		print	msg_not_extracted
+		printl	lzh_name,(lzh_name_length)
+		print	msg_crlf
+not_extracted.skip:
+		call	lzh_skip_data
+		or	a
+		jr	z,not_extracted.next
+not_extracted.done:
+		ld	a,(stop_code)
+		jp	report_stop
+
+; print_size - an amount of disk space, given in clusters: "N KB", or
+;   "N.N MB" from 1024 KB, as R5 asks.
+;
+;   The clusters are made 512-byte units first (a cluster is 512 bytes
+;   or a power of two more): a KB is 2 units, a tenth of an MB 204.8.
+;   The space free is rounded down and the space needed up, so a
+;   shortage never looks smaller than it is.
+;
+; Input:	DE:HL = the clusters
+;		A = 0 to round down, 1 to round up
+;		cluster_shift
+; Output:	the amount, on standard output
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+print_size:
+		ld	(size_round),a
+		ld	a,(cluster_shift)
+		sub	9
+		jr	z,print_size.units
+		ld	b,a
+print_size.double:
+		add	hl,hl
+		rl	e
+		rl	d
+		djnz	print_size.double
+print_size.units:
+		ld	a,d		; DE:HL = 512-byte units
+		or	e
+		jr	nz,print_size.mb
+		ld	a,h
+		cp	08h
+		jr	nc,print_size.mb	; 2048 units: 1024 KB
+		ld	a,(size_round)
+		ld	c,a
+		ld	b,0
+		add	hl,bc		; one more, to round up
+		srl	h
+		rr	l		; HL = KB
+		ld	bc,msg_kb
+		jr	print_size.number
+print_size.mb:
+		ld	(size_value),hl
+		ld	(size_value+2),de
+		add	hl,hl		; times 4
+		rl	e
+		rl	d
+		add	hl,hl
+		rl	e
+		rl	d
+		ld	bc,(size_value)	; plus once: 5
+		add	hl,bc
+		ex	de,hl
+		ld	bc,(size_value+2)
+		adc	hl,bc
+		ex	de,hl
+		add	hl,hl		; twice that: 10
+		rl	e
+		rl	d
+		ld	a,(size_round)
+		or	a
+		jr	z,print_size.tenths
+		ld	bc,2047		; to round up
+		add	hl,bc
+		jr	nc,print_size.tenths
+		inc	de
+print_size.tenths:
+		ld	b,11		; / 2048: tenths of an MB
+print_size.halve:
+		srl	d
+		rr	e
+		rr	h
+		rr	l
+		djnz	print_size.halve
+		ld	c,10
+		call	divide_by_c	; DE:HL = MB, A = tenths
+		add	a,"0"
+		ld	(mb_digit),a
+		ld	bc,msg_mb
+print_size.number:
+		push	bc		; the unit
+		ld	ix,size_text+10
+		ld	b,10
+		call	format_number	; IX -> the field
+print_size.blank:
+		ld	a,(ix+0)
+		cp	CHR_SPACE
+		jr	nz,print_size.digits
+		inc	ix
+		jr	print_size.blank
+print_size.digits:
+		push	ix
+		pop	de		; DE -> the first digit
+		ld	hl,size_text+10
+		or	a
+		sbc	hl,de		; HL = how many
+		call	print_length
+		pop	de
+		dos	_STROUT		; " KB", or ".N MB"
 		ret
 
 ; set_date_attributes - give the file just extracted its date and its
@@ -794,6 +1292,11 @@ print_totals.word:
 ; msg_extracting, msg_skipping, msg_ok, msg_crc_error, msg_exists,
 ; msg_colon, msg_not_yet	extracting's words, put together per member
 ; method_lh0		the one method extracted in this phase
+; msg_space_need, msg_space_free, msg_space_on, msg_space_drive
+;			the shortage, with the amounts and the drive
+;			between them; check_space writes the letter
+; msg_kb, msg_mb, mb_digit	print_size's units; it writes the tenths
+; msg_not_extracted	not_extracted's line, before the name
 ;
 switch_letters:	defb	"DLOQV?",0
 msg_need_dos2:	defb	"ERROR: UNKAGO needs MSX-DOS2 or Nextor."
@@ -865,6 +1368,16 @@ msg_exists:	defb	": it already exists",CHR_CR,CHR_LF,"$"
 msg_colon:	defb	": $"
 msg_not_yet:	defb	" is not supported yet",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
+msg_space_need:	defb	"Extracting this archive would take $"
+msg_space_free:	defb	" on disk, but only $"
+msg_space_on:	defb	" are free on $"
+msg_space_drive:
+		defb	"A:.",CHR_CR,CHR_LF,"$"
+msg_kb:		defb	" KB$"
+msg_mb:		defb	"."
+mb_digit:	defb	"0 MB$"
+msg_not_extracted:
+		defb	"Not extracted $"
 
 		dseg
 
@@ -886,9 +1399,23 @@ method_lh0:	defb	"-lh0-"
 ; listing		not 0 while listing: report_stop prints totals
 ; overwrite		not 0 with /O
 ; out_handle		the file being extracted
-; out_name		its name, zero-terminated
+; out_name		its name, zero-terminated, with dest_path: 384
+;			bytes, in the buffers segment
 ; remaining		its data still to copy, 4 bytes
 ; chunk			the bytes in copy_buffer this time round
+; dest_path		/D:'s path, zero-terminated; empty without /D
+; dest_mode		walk_dest: 0 counts directories, 1 creates them
+; dest_error		walk_dest: the first error creating them
+; dest_letter		the drive extracted to, for the message
+; new_dirs		the directories /D: will create
+; cluster_shift		log2 of the cluster's size, in bytes
+; free_clusters		_ALLOC's free clusters
+; need_clusters		what the extraction takes, 4 bytes
+; stop_code		not_extracted: what stopped the extraction
+; walked		not_extracted: the members walked again
+; size_round, size_value, size_text
+;			print_size: rounding up or not, the amount in
+;			tenths, and the number, 10 wide
 ; copy_buffer		the data, COPY_SIZE bytes at a time, in the
 ;			buffers segment, which the program file does not
 ;			carry
@@ -911,12 +1438,25 @@ date_second:	defs	1
 listing:	defs	1
 overwrite:	defs	1
 out_handle:	defs	1
-out_name:	defs	256
 remaining:	defs	4
 chunk:	defs	2
+dest_path:	defs	128
+dest_mode:	defs	1
+dest_error:	defs	1
+dest_letter:	defs	1
+new_dirs:	defs	2
+cluster_shift:	defs	1
+free_clusters:	defs	2
+need_clusters:	defs	4
+stop_code:	defs	1
+walked:	defs	2
+size_round:	defs	1
+size_value:	defs	4
+size_text:	defs	10
 
 		dseg	buffers
 copy_buffer:	defs	COPY_SIZE
+out_name:	defs	384
 
 		end	main
 

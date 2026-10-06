@@ -14,6 +14,7 @@
 LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 
 		public	lzh_open
+		public	lzh_rewind
 		public	lzh_next_header
 		public	lzh_skip_data
 		public	lzh_name
@@ -73,7 +74,21 @@ lzh_open:
 		or	a
 		ret	nz
 		ld	(lzh_size),hl
-		ld	(lzh_size+2),de
+		ld	(lzh_size+2),de	; and on into lzh_rewind
+
+; lzh_rewind - back to the start of the archive, to walk it again.
+;
+;   lzh_open ends by falling into it.
+;
+; Input:	none: the archive is open
+; Output:	A = 0, or an MSX-DOS error code
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+lzh_rewind:
 		xor	a		; back to the start
 		ld	d,a
 		ld	e,a

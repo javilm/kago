@@ -263,10 +263,31 @@ Extracting BADCRC.DAT CRC error
 --- unkago /O ..\unkago\l2lh5.lzh
 Skipping gpl-2: -lh5- is not supported yet
 --- unkago /O ..\unkago\cutdata.lzh
-Skipping gpl-2: -lh5- is not supported yet
 The archive ends in the middle of a member.
 --- del readonly.dat
 READONLY.DAT -- Read only file
+=== UNKAGO DESTINATION AND SPACE
+--- unkago /O /D:tests\out\d1\d2 tests\unkago\l1lh0.lzh
+Extracting GPL-2.GZ OK
+--- unkago /D: tests\unkago\multi0.lzh
+
+*** Missing parameter
+--- unkago /D:H:\NO\DIR tests\unkago\big1.lzh
+Extracting this archive would take 21 KB on disk, but only 13 KB are free on H:.
+--- unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh
+Extracting README.TXT OK
+Extracting A$B.TXT OK
+Extracting EMPTY.DAT OK
+--- unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh
+Skipping README.TXT: it already exists
+Skipping A$B.TXT: it already exists
+Skipping EMPTY.DAT: it already exists
+--- unkago /D:H: tests\unkago\lie.lzh
+Extracting LIE.DAT
+Not extracted LIE.DAT
+Not extracted AFTER.DAT
+
+*** Disk full
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

@@ -10,6 +10,7 @@
 		extrn	dos_version
 		extrn	find_bad_switch
 		extrn	switch_given
+		extrn	switch_value
 		extrn	safe_p2restore
 		extrn	first_argument
 		extrn	print_length

@@ -75,6 +75,12 @@ badcrc.lzh
     made for Tsuzura: level 0, BADCRC.DAT, stored, with one bit of
     the data flipped: the CRC no longer matches
     sha256 3585a04a6788fe4d3928a700e7f8fcf2d4e8a28d6c5af7e84d1da9b8210557b4
+lie.lzh
+    made for Tsuzura: level 0, stored. LIE.DAT's header says its
+    original size is 1 byte, but it carries 16384 (55h each), so the
+    free-space check passes and the disk fills while it is copied;
+    then AFTER.DAT, 11 bytes, honest
+    sha256 200b3f1b7be16b5c81ba99d208667f190cf26e87b9ac36d613e1585e61acbf93
 
 The archives from lhasa are distributed under its licence:
 

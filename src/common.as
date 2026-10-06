@@ -9,6 +9,7 @@
 		public	dos_version
 		public	find_bad_switch
 		public	switch_given
+		public	switch_value
 		public	safe_p2restore
 		public	first_argument
 		public	print_length
@@ -112,6 +113,32 @@ switch_given.next:
 		scf			; this is the one
 		ret
 
+; switch_value - where a switch's value is on the command line.
+;
+;   The value is whatever follows the switch's letter in the same word:
+;   ":B:\TEST" for "/D:B:\TEST". next_switch notes where each letter
+;   ends, in switch_value_at.
+;
+; Input:	C = the switch's letter, upper case
+; Output:	CY set = it was given, and then
+;		HL -> its value
+;		B = the value's length, 0 when there is none
+; Modifies:	AF
+;		B
+;		DE
+;		HL
+; Scratch:	none
+
+switch_value:
+		call	switch_given	; CY set: DE -> after its word
+		ret	nc
+		ld	hl,(switch_value_at)
+		ld	a,e
+		sub	l		; the word is under 128 bytes
+		ld	b,a
+		scf
+		ret
+
 ; next_switch - the letter of the next switch on the command line.
 ;
 ;   A switch is a word that starts with "/". Words are separated by
@@ -123,6 +150,8 @@ switch_given.next:
 ;   A "/" with no letter after it gives "/" as the letter, which is
 ;   no tool's switch: it is a bad switch, and it cannot be mistaken
 ;   for the 0 that means no more switches.
+;
+;   Where the letter ends is kept in switch_value_at, for switch_value.
 ;
 ; Input:	DE -> where to start, in the command line
 ; Output:	A = the letter, upper case
@@ -161,6 +190,7 @@ next_switch.slash:
 		jr	nc,next_switch.folded
 		sub	"a"-"A"
 next_switch.folded:
+		ld	(switch_value_at),de	; where its value starts
 		push	af
 		call	skip_word	; the rest of the word: its value
 		pop	af
@@ -439,11 +469,13 @@ safe_p2restore:
 
 		dseg
 
-; Variables for print_explanation:
+; Variables for print_explanation and next_switch:
 ;
 ; explain_text		_EXPLAIN's message: 64 bytes, zero-terminated
+; switch_value_at	where the last switch's letter ends
 ;
 explain_text:	defs	64
+switch_value_at:	defs	2
 
 		end
 
