@@ -335,6 +335,93 @@ Extracting gpl-2 OK
 Extracting FAR.DAT OK
 --- unkago /O /D:lh5 ..\unkago\far7.lzh
 Extracting FAR.DAT OK
+=== UNKAGO DIRECTORIES
+--- unkago /L ..\unkago\tree.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         0          0 -lhd-  2026-10-03 12:00 tree\
+         3          3 -lh0-  2026-10-06 18:00 tree\a.txt
+         0          0 -lhd-  2026-10-05 12:00 tree\empty\
+         0          0 -lhd-  2026-10-04 12:00 tree\sub\
+         4          4 -lh0-  2026-10-06 18:00 tree\sub\b.txt
+         0          0 -lhd-  2026-10-05 12:00 tree\sub\deep\
+         5          5 -lh0-  2026-10-06 18:00 tree\sub\deep\c.txt
+---------- ---------- ------                  ------------
+        12         12        7 files
+--- unkago /O /D:dirs ..\unkago\tree.lzh
+Extracting tree\ OK
+Extracting tree\a.txt OK
+Extracting tree\empty\ OK
+Extracting tree\sub\ OK
+Extracting tree\sub\b.txt OK
+Extracting tree\sub\deep\ OK
+Extracting tree\sub\deep\c.txt OK
+--- unkago /D:dirs ..\unkago\tree.lzh
+Extracting tree\ OK
+Skipping tree\a.txt: it already exists
+Extracting tree\empty\ OK
+Extracting tree\sub\ OK
+Skipping tree\sub\b.txt: it already exists
+Extracting tree\sub\deep\ OK
+Skipping tree\sub\deep\c.txt: it already exists
+--- unkago /O /D:dirs\l0 ..\unkago\dirl0.lzh
+Extracting subdir\SUBDIR2\HELLO.TXT OK
+--- unkago /O /D:dirs\l1 ..\unkago\dirl1.lzh
+Extracting SUBDIR\SUBDIR2\HELLO.TXT OK
+--- unkago /O /D:dirs\h0 ..\unkago\dirh0.lzh
+Extracting subdir\ OK
+Extracting subdir\subdir2\ OK
+Extracting subdir\subdir2\hello.txt OK
+--- unkago /O /D:dirs\h1 ..\unkago\dirh1.lzh
+Extracting subdir\ OK
+Extracting subdir\subdir2\ OK
+Extracting subdir\subdir2\hello.txt OK
+--- unkago /O /D:dirs\h2 ..\unkago\dirh2.lzh
+Extracting subdir\ OK
+Extracting subdir\subdir2\ OK
+Extracting subdir\subdir2\hello.txt OK
+--- unkago /L ..\unkago\paths.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         3          3 -lh0-  2026-10-06 18:00 root.txt
+         3          3 -lh0-  2026-10-06 18:00 drive.txt
+         3          3 -lh0-  2026-10-06 18:00 up.txt
+         4          4 -lh0-  2026-10-06 18:00 up2.txt
+         5          5 -lh0-  2026-10-06 18:00 x\dot.txt
+         3          3 -lh0-  2026-10-06 18:00 x\y\z.txt
+         5          5 -lh0-  2026-10-06 18:00 y\two.txt
+         7          7 -lh0-  2026-10-06 18:00 x\three.txt
+         3          3 -lh0-  2026-10-06 18:00 clash
+         3          3 -lh0-  2026-10-06 18:00 clash\f.txt
+         0          0 -lhd-  2026-10-06 18:00 hid\
+         3          3 -lh0-  2026-10-06 18:00 aaaaaaaa\bbbbbbbb\cccccccc\dddddddd\eeeeeeee\ffffffff\gggggggg\i.txt
+---------- ---------- ------                  ------------
+        42         42        12 files
+--- unkago /O /D:paths ..\unkago\paths.lzh
+Extracting root.txt OK
+Extracting drive.txt OK
+Extracting up.txt OK
+Extracting up2.txt OK
+Extracting x\dot.txt OK
+Extracting x\y\z.txt OK
+Extracting y\two.txt OK
+Extracting x\three.txt OK
+Extracting clash OK
+Skipping clash\f.txt: File exists
+Extracting hid\ OK
+Skipping aaaaaaaa\bbbbbbbb\cccccccc\dddddddd\eeeeeeee\ffffffff\gggggggg\i.txt: Pathname too long
+--- unkago /O /D:sel2 ..\unkago\tree.lzh tree\sub
+Extracting tree\sub\ OK
+Extracting tree\sub\b.txt OK
+Extracting tree\sub\deep\ OK
+Extracting tree\sub\deep\c.txt OK
+--- unkago /L ..\unkago\tree.lzh *\deep
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         0          0 -lhd-  2026-10-05 12:00 tree\sub\deep\
+         5          5 -lh0-  2026-10-06 18:00 tree\sub\deep\c.txt
+---------- ---------- ------                  ------------
+         5          5        2 files
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

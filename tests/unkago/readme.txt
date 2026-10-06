@@ -129,6 +129,36 @@ long7.lzh
     1.14i, level 1, -lh7-, long.txt, the same 1241658 bytes as
     long.lzh's in 76620: for SPEED.BAT, not for TESTS.BAT
     sha256 37ffaebe08c9d8dcf8e9add232187bcdaa1313b13f7c22efe810b8bf883eaae5
+tree.lzh
+    made for Tsuzura with LHa for UNIX 1.14i-ac20260723, level 2: a
+    tree with -lhd- members for TREE, TREE\EMPTY, TREE\SUB and
+    TREE\SUB\DEEP, and A.TXT, SUB\B.TXT, SUB\DEEP\C.TXT, stored
+    (-lh0-); directory dates 3 to 5 October 2026, 12:00 UTC
+    sha256 9a6f1f7776eec97d52e8476b0a93ae12e0b4f1cebe950626737a2bddc72997c6
+dirl0.lzh
+    lhasa test/archives/lh2_222/subdir.lzh: LH 2.22, level 0, the path
+    in the name with "\": subdir\SUBDIR2\HELLO.TXT
+    sha256 8423e0d69258bffd28dc322ed6ebfb7b2ded44cf5c23d6438a726d16e5319d69
+dirl1.lzh
+    lhasa test/archives/lha213/subdir.lzh: LHA 2.13, level 1, the
+    directories in an extended header: SUBDIR\SUBDIR2\HELLO.TXT
+    sha256 10b776b9b34f1d0292ce8fcefee1e187ad812fa250b58e507b77679cda1e11f7
+dirh0.lzh
+    lhasa test/archives/explzh_723/h0_subdir.lzh: Explzh 7.23, level 0,
+    -lhd- members for subdir and subdir\subdir2, then hello.txt
+    sha256 1c2225eb7054a62cbb4dc23a14982261c82e2e7bc0e14077e8e16ad605d1dfec
+dirh1.lzh
+    lhasa test/archives/explzh_723/h1_subdir.lzh: the same, level 1
+    sha256 ea8db6439e1b2bc06e6fff5cc795dbac0d51aa8d767738764c2887d9cd084f75
+dirh2.lzh
+    lhasa test/archives/explzh_723/h2_subdir.lzh: the same, level 2
+    sha256 a06dbcc6bb6ee2a2196ec359a595987198399295af6239ce8c29080dbd00cfe0
+paths.lzh
+    made for Tsuzura by a Python script (note 013), level 0, stored:
+    paths from the root, with a drive, with . and .., with "/" and
+    doubled separators; a file CLASH and then CLASH\F.TXT; a hidden
+    -lhd- member HID; and a path of more than 63 characters
+    sha256 ae58067e5f42398b4e4e26ada13c5feb187000065ce8628cfbd135fb8c80895c
 
 The archives from lhasa are distributed under its licence:
 

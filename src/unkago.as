@@ -2,14 +2,16 @@
 ; extracts their stored and -lh4- to -lh7- members.
 ;
 ; It checks for MSX-DOS2 and the command line. With /L it lists the
-; members of an LZH archive: sizes, method, date and name, one line
+; members of an LZH archive: sizes, method, date and path, one line
 ; each, and the totals. Without it, it extracts the -lh0- (stored) and
 ; -lh4- to -lh7- (lh5.as) members into the current directory, or the
 ; one /D: names, checking first that they fit on the disk and their
-; windows in the mapper, and then each one's CRC-16. Names after the
-; archive's, with * and ?, choose the members, for listing and
-; extracting alike. On the screen, each member's line shows how far
-; through it UNKAGO is.
+; windows in the mapper, and then each one's CRC-16. The directories in
+; the members' paths are made as they are needed, and -lhd- members
+; make theirs and give them their dates. Names after the archive's,
+; with * and ?, choose the members, for listing and extracting alike;
+; a directory's name chooses what is under it. On the screen, each
+; member's line shows how far through it UNKAGO is.
 
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
@@ -327,6 +329,7 @@ extract_archive:
 		ld	a,(dest_error)
 		or	a
 		jp	nz,report_stop	; one could not be created
+		ld	(last_length),a	; A = 0: no member's directories yet
 		call	lzh_rewind
 		or	a
 		jp	nz,report_stop
@@ -348,9 +351,13 @@ extract_archive.next:
 
 ; extract_member - extract, or skip, the member just read.
 ;
-;   A member not asked for is passed over without a line. Only -lh0-
-;   (stored) members are extracted in this phase. The file,
-;   dest_path and the member's name, is created with _CREATE's "create
+;   A member not asked for is passed over without a line, and one
+;   whose method UNKAGO does not have gets a line saying so. The
+;   directories in the member's path are made first (member_dirs); one
+;   that cannot be skips the member, with MSX-DOS2's reason. A -lhd-
+;   member is a directory: made, it is given its date and its hidden
+;   attribute, whether it was there already or not. The file,
+;   out_name, is created with _CREATE's "create
 ;   new" flag unless /O was given, so an existing file is never replaced
 ;   by accident: MSX-DOS2 refuses with .FILEX. The data is copied
 ;   through copy_buffer, COPY_SIZE bytes at a time, its CRC-16 computed
@@ -373,38 +380,16 @@ extract_archive.next:
 extract_member:
 		call	member_selected	; Z: asked for
 		jp	nz,lzh_skip_data	; not asked for: no line
-		call	member_supported	; Z: -lh0-
+		call	member_supported	; Z: one UNKAGO extracts
 		jp	nz,extract_member.unsupported	; too far for jr
-		ld	hl,dest_path	; out_name: dest_path, a "\" if it
-		ld	de,out_name	;   needs one, then the name
-		ld	a,(hl)
+		call	out_path	; out_name: where it goes
+		call	member_dirs	; its directories, made
+		ld	a,(dest_error)
 		or	a
-		jr	z,extract_member.name	; no /D
-extract_member.path:
-		ldi
-		ld	a,(hl)
-		or	a
-		jr	nz,extract_member.path
-		dec	de
-		ld	a,(de)		; the path's last character
-		inc	de
-		cp	":"
-		jr	z,extract_member.name
-		cp	PATH_SEPARATOR
-		jr	z,extract_member.name
-		ld	a,PATH_SEPARATOR
-		ld	(de),a
-		inc	de
-extract_member.name:
-		ld	bc,(lzh_name_length)
-		ld	a,b
-		or	c
-		jr	z,extract_member.named	; empty: _CREATE says why
-		ld	hl,lzh_name
-		ldir
-extract_member.named:
-		xor	a
-		ld	(de),a
+		jp	nz,extract_member.no_dir
+		ld	a,(member_kind)
+		cp	"d"
+		jp	z,extract_member.directory
 		ld	a,(overwrite)	; B = 80h: create new, unless /O
 		cpl
 		and	80h
@@ -414,28 +399,38 @@ extract_member.named:
 		dos	_CREATE		; B = the handle
 		or	a
 		jp	z,extract_member.created	; too far for jr
+		cp	.FILEX
+		jr	nz,extract_member.no_dir
+		print	msg_skipping	; "create new" refused
+		call	print_path
+		print	msg_exists
+		jp	lzh_skip_data	; A = 0, or what stopped it
+extract_member.no_dir:
 		cp	.DKFUL		; no room: stop, not skip
 		ret	z
 		cp	.DRFUL
 		ret	z
 		push	af
 		print	msg_skipping
-		printl	lzh_name,(lzh_name_length)
-		pop	af
-		cp	.FILEX
-		jr	nz,extract_member.refused
-		print	msg_exists
-		jp	lzh_skip_data	; A = 0, or what stopped it
-extract_member.refused:
-		push	af
+		call	print_path
 		print	msg_colon
 		pop	af
 		call	print_explanation	; MSX-DOS2's reason
 		print	msg_crlf
 		jp	lzh_skip_data
+extract_member.directory:
+		ld	hl,(lzh_name_length)
+		ld	a,h
+		or	l
+		jp	z,lzh_skip_data	; the destination itself: no line
+		print	msg_extracting
+		call	print_path
+		call	set_date_attributes
+		print	msg_ok
+		jp	lzh_skip_data	; no data, but on to the next header
 extract_member.unsupported:
 		print	msg_skipping
-		printl	lzh_name,(lzh_name_length)
+		call	print_path
 		print	msg_colon
 		printl	lzh_method,5
 		print	msg_not_yet
@@ -444,7 +439,7 @@ extract_member.created:
 		ld	a,b
 		ld	(out_handle),a
 		print	msg_extracting
-		printl	lzh_name,(lzh_name_length)
+		call	print_path
 		call	progress_start	; "   0%", on the screen
 		ld	hl,0
 		ld	(crc_value),hl
@@ -577,7 +572,7 @@ extract_member.discard:
 		ret
 
 ; member_supported - whether the member just read is one UNKAGO
-;   extracts: -lh0- (stored), or -lh4- to -lh7-.
+;   extracts: -lh0- (stored), -lh4- to -lh7-, or -lhd- (a directory).
 ;
 ; Input:	lzh_method (lzh.as)
 ; Output:	Z set = it is
@@ -606,6 +601,8 @@ member_supported.next:
 		ld	(member_kind),a
 		cp	"0"
 		ret	z
+		cp	"d"		; -lhd-
+		ret	z
 		sub	"4"		; "4" to "7": 0 to 3
 		cp	4
 		jr	nc,member_supported.no
@@ -619,8 +616,9 @@ member_supported.no:
 ;
 ;   The archive is walked once, and each member that will be extracted
 ;   counts its original size, rounded up to whole clusters; a 0-byte
-;   file takes none. Each directory /D: will create takes one cluster
-;   more. The cluster's size and the free clusters come from _ALLOC,
+;   file takes none. Each directory /D: will create, and each one a
+;   member's path needs that is not there (member_dirs), takes one
+;   cluster more. The cluster's size and the free clusters come from _ALLOC,
 ;   for the drive /D: names or the current one.
 ;
 ;   A file that exists already counts in full, though without /O it is
@@ -664,13 +662,13 @@ check_space.bytes:
 		ld	hl,0
 		ld	(new_dirs),hl
 		call	walk_dest
-		ld	hl,(new_dirs)	; a cluster for each directory
-		ld	(need_clusters),hl
 		ld	hl,0
+		ld	(need_clusters),hl
 		ld	(need_clusters+2),hl
 		ld	(members),hl
 		xor	a
 		ld	(need_segs),a	; no window yet
+		ld	(last_length),a	; no member's directories yet
 check_space.next:
 		call	lzh_next_header
 		or	a
@@ -682,6 +680,8 @@ check_space.next:
 		jr	nz,check_space.skip
 		call	member_supported	; Z: it will be extracted
 		jr	nz,check_space.skip
+		call	out_path	; its new directories, counted
+		call	member_dirs
 		ld	hl,(lzh_original)
 		ld	de,(lzh_original+2)
 		call	to_clusters	; DE:HL = its clusters
@@ -693,6 +693,8 @@ check_space.next:
 		adc	hl,bc
 		ld	(need_clusters+2),hl
 		ld	a,(member_kind)	; its window, in segments
+		cp	"d"
+		jr	z,check_space.skip	; -lhd-: none
 		sub	"4"		; "4" to "7": 0 to 3
 		jr	c,check_space.skip	; -lh0-: none
 		ld	e,a
@@ -717,6 +719,15 @@ check_space.end:
 		or	l
 		ld	a,LZH_END
 		jp	z,report_stop	; no member at all: not LZH
+		ld	hl,(need_clusters)	; a cluster for each directory
+		ld	de,(new_dirs)
+		add	hl,de
+		ld	(need_clusters),hl
+		jr	nc,check_space.dirs
+		ld	hl,(need_clusters+2)
+		inc	hl
+		ld	(need_clusters+2),hl
+check_space.dirs:
 		ld	hl,(need_clusters+2)
 		ld	a,h
 		or	l
@@ -814,16 +825,12 @@ dest_drive.letter:
 ; walk_dest - each directory in dest_path, from the top down: counted,
 ;   or created.
 ;
-;   With dest_mode 0, a directory _ATTR cannot find adds 1 to new_dirs;
-;   with dest_mode 1 it is created with _CREATE, one that is there
-;   already (.DIRX) being no error. The first other error is kept in
-;   dest_error, and the walk goes on. The drive and a leading "\" are
-;   not directories to make, and neither is an empty part, as in a path
-;   ending in "\".
+;   The drive and a leading "\" are not directories to make; the rest
+;   is walk_parts'.
 ;
 ; Input:	dest_path
 ;		dest_mode
-; Output:	new_dirs, counted; or the directories, and dest_error
+; Output:	as walk_parts
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -832,6 +839,7 @@ dest_drive.letter:
 
 walk_dest:
 		ld	hl,dest_path
+		ld	(walk_path),hl
 		ld	a,(hl)
 		or	a
 		ret	z		; no /D: nothing to walk
@@ -848,21 +856,60 @@ walk_dest.top:
 		jr	nz,walk_dest.start
 		inc	hl		; past the root
 walk_dest.start:
+		ld	d,h		; walk_end: its 0
+		ld	e,l
+walk_dest.end:
+		ld	a,(de)
+		or	a
+		jr	z,walk_dest.found
+		inc	de
+		jr	walk_dest.end
+walk_dest.found:
+		ld	(walk_end),de	; and on into walk_parts
+
+; walk_parts - each directory in a path, from the first part given
+;   down: counted, or created.
+;
+;   Each part ends at a "\" or at walk_end, and the path down to its
+;   end is given to MSX-DOS2, with a 0 put after it for the while. With
+;   dest_mode 0, a directory _ATTR cannot find adds 1 to new_dirs; with
+;   dest_mode 1 it is created with _CREATE, one that is there already
+;   (.DIRX) being no error. The first other error is kept in
+;   dest_error, and the walk goes on. An empty part, as in a path
+;   ending in "\", is not a directory to make.
+;
+; Input:	HL -> the first part to walk
+;		walk_path -> the whole path, from its start
+;		walk_end -> where the walk ends
+;		dest_mode
+; Output:	new_dirs, counted; or the directories, and dest_error
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+walk_parts:
 		ld	d,h		; DE -> where this part starts
 		ld	e,l
-walk_dest.scan:
+walk_parts.scan:
+		call	walk_at_end	; Z: HL is at walk_end
+		jr	z,walk_parts.part	; the last part, then return
 		ld	a,(hl)
-		or	a
-		jr	z,walk_dest.part	; the last part, then return
 		cp	PATH_SEPARATOR
-		jr	z,walk_dest.more
+		jr	z,walk_parts.more
 		inc	hl
-		jr	walk_dest.scan
-walk_dest.more:
-		call	walk_dest.part
+		call	kanji_lead	; CY: a pair, so its second byte too
+		jr	nc,walk_parts.scan
+		call	walk_at_end
+		jr	z,walk_parts.part
 		inc	hl
-		jr	walk_dest.start
-walk_dest.part:
+		jr	walk_parts.scan
+walk_parts.more:
+		call	walk_parts.part
+		inc	hl
+		jr	walk_parts
+walk_parts.part:
 		or	a		; HL -> its end, DE -> its start
 		sbc	hl,de
 		add	hl,de		; Z from the SBC: empty
@@ -871,35 +918,234 @@ walk_dest.part:
 		ld	a,(hl)
 		push	af
 		ld	(hl),0		; the path down to here
-		ld	de,dest_path
+		ld	de,(walk_path)
 		ld	a,(dest_mode)
 		or	a
-		jr	nz,walk_dest.create
+		jr	nz,walk_parts.create
 		dos	_ATTR		; A = 0: get
 		or	a
-		jr	z,walk_dest.restore	; it is there
+		jr	z,walk_parts.restore	; it is there
 		ld	hl,(new_dirs)
 		inc	hl
 		ld	(new_dirs),hl
-		jr	walk_dest.restore
-walk_dest.create:
+		jr	walk_parts.restore
+walk_parts.create:
 		ld	b,10h		; a subdirectory
 		dos	_CREATE
 		or	a
-		jr	z,walk_dest.restore
+		jr	z,walk_parts.restore
 		cp	.DIRX
-		jr	z,walk_dest.restore	; it was there
+		jr	z,walk_parts.restore	; it was there
 		ld	c,a
 		ld	a,(dest_error)
 		or	a
-		jr	nz,walk_dest.restore	; keep the first
+		jr	nz,walk_parts.restore	; keep the first
 		ld	a,c
 		ld	(dest_error),a
-walk_dest.restore:
+walk_parts.restore:
 		pop	af
 		pop	hl
 		ld	(hl),a
 		ret
+
+; walk_at_end - whether HL is at walk_end.
+;
+; Input:	HL, walk_end
+; Output:	Z set = it is
+; Modifies:	F
+; Scratch:	none
+
+walk_at_end:
+		push	de
+		ld	de,(walk_end)
+		or	a
+		sbc	hl,de
+		add	hl,de		; Z from the SBC
+		pop	de
+		ret
+
+; out_path - out_name: the destination, then the member's path.
+;
+; Input:	dest_path; lzh_name, lzh_name_length (lzh.as)
+; Output:	out_name: the two, a "\" between if the destination
+;		needs one, and a 0
+;		out_member -> where the member's path starts in it
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+out_path:
+		ld	hl,dest_path
+		ld	de,out_name
+		ld	a,(hl)
+		or	a
+		jr	z,out_path.name	; no /D
+out_path.dest:
+		ldi
+		ld	a,(hl)
+		or	a
+		jr	nz,out_path.dest
+		dec	de
+		ld	a,(de)		; the path's last character
+		inc	de
+		cp	":"
+		jr	z,out_path.name
+		cp	PATH_SEPARATOR
+		jr	z,out_path.name
+		ld	a,PATH_SEPARATOR
+		ld	(de),a
+		inc	de
+out_path.name:
+		ld	(out_member),de
+		ld	bc,(lzh_name_length)
+		ld	a,b
+		or	c
+		jr	z,out_path.named	; empty: _CREATE says why
+		ld	hl,lzh_name
+		ldir
+out_path.named:
+		xor	a
+		ld	(de),a
+		ret
+
+; member_dirs - the directories in the member's path: counted or
+;   created, by walk_parts, under the destination.
+;
+;   A file's are the parts of its path before the last; a directory
+;   member's (-lhd-) are all of them. The member before left its own in
+;   last_dir, and the parts the two share from the start were walked
+;   then, so only the rest are walked now: an archive keeps a
+;   directory's members together, and most members walk nothing. One
+;   that comes back to a directory after leaving it walks it again;
+;   counting, a directory not there yet is then counted twice, which
+;   errs on the safe side. Names are compared as MSX-DOS2 does, upper
+;   and lower case alike.
+;
+;   A walk that fails to create leaves last_dir empty, so that the next
+;   member tries again, and is skipped with its own reason.
+;
+; Input:	out_name, out_member (out_path)
+;		member_kind
+;		dest_mode: 0 to count, 1 to create
+;		last_dir, last_length
+; Output:	new_dirs; or the directories, and dest_error, 0 for none
+;		last_dir, last_length: this member's directories
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	dirs_end
+;		dirs_shared
+
+member_dirs:
+		xor	a
+		ld	(dest_error),a
+		ld	hl,(out_member)	; dirs_end: the last "\", or the start
+		ld	(dirs_end),hl
+member_dirs.scan:
+		ld	a,(hl)
+		or	a
+		jr	z,member_dirs.ended
+		cp	PATH_SEPARATOR
+		jr	nz,member_dirs.char
+		ld	(dirs_end),hl
+member_dirs.char:
+		inc	hl
+		call	kanji_lead	; CY: a pair, so its second byte too
+		jr	nc,member_dirs.scan
+		ld	a,(hl)
+		or	a
+		jr	z,member_dirs.ended
+		inc	hl
+		jr	member_dirs.scan
+member_dirs.ended:
+		ld	a,(member_kind)
+		cp	"d"
+		jr	nz,member_dirs.file
+		ld	(dirs_end),hl	; a directory: all of it
+member_dirs.file:
+		ld	hl,(dirs_end)	; C = this member's directories' length
+		ld	de,(out_member)
+		or	a
+		sbc	hl,de
+		ld	c,l
+		ld	(dirs_shared),de	; nothing shared yet
+		ld	a,(last_length)	; B = the shorter of the two
+		cp	c
+		jr	c,member_dirs.shorter
+		ld	a,c
+member_dirs.shorter:
+		ld	b,a
+		ld	hl,last_dir	; HL, DE: the two side by side
+		or	a
+		jr	z,member_dirs.ends	; nothing to compare
+member_dirs.compare:
+		ld	a,(de)
+		call	fold_case
+		push	bc
+		ld	c,a
+		ld	a,(hl)
+		call	fold_case
+		cp	c
+		pop	bc
+		jr	nz,member_dirs.walk	; they part here
+		cp	PATH_SEPARATOR
+		jr	nz,member_dirs.next
+		push	de		; shared up to this "\"
+		inc	de
+		ld	(dirs_shared),de
+		pop	de
+member_dirs.next:
+		inc	hl
+		inc	de
+		djnz	member_dirs.compare
+member_dirs.ends:
+		ld	a,(last_length)	; the shorter used up: is it a whole
+		cp	c		;   part of the longer?
+		jr	z,member_dirs.all	; the same directories
+		jr	c,member_dirs.longer
+		ld	a,(hl)		; last_dir's go on
+		cp	PATH_SEPARATOR
+		jr	nz,member_dirs.walk
+member_dirs.all:
+		ld	hl,(dirs_end)	; nothing left to walk
+		ld	(dirs_shared),hl
+		jr	member_dirs.walk
+member_dirs.longer:
+		ld	a,(de)		; this member's go on
+		cp	PATH_SEPARATOR
+		jr	nz,member_dirs.walk
+		ld	(dirs_shared),de	; the rest, from that "\"
+member_dirs.walk:
+		ld	hl,out_name
+		ld	(walk_path),hl
+		ld	hl,(dirs_end)
+		ld	(walk_end),hl
+		ld	hl,(dirs_shared)
+		call	walk_parts
+		ld	hl,(dirs_end)	; kept for the next member
+		ld	de,(out_member)
+		or	a
+		sbc	hl,de
+		ld	b,h
+		ld	c,l
+		ld	a,c
+		ld	(last_length),a
+		ex	de,hl
+		ld	de,last_dir
+		or	a
+		jr	z,member_dirs.kept
+		ldir
+member_dirs.kept:
+		ld	a,(dest_error)
+		or	a
+		ret	z
+		xor	a		; failed: the next member walks again
+		ld	(last_length),a
+		ret
+
 
 ; not_extracted - after extracting stopped part way: a line for each
 ;   member not extracted, then the reason, through report_stop.
@@ -935,7 +1181,7 @@ not_extracted.next:
 		call	member_selected	; only those asked for
 		jr	nz,not_extracted.skip
 		print	msg_not_extracted
-		printl	lzh_name,(lzh_name_length)
+		call	print_path
 		print	msg_crlf
 not_extracted.skip:
 		call	lzh_skip_data
@@ -1058,7 +1304,8 @@ print_size.digits:
 ;
 ; Input:	lzh_name, lzh_name_length (lzh.as)
 ;		name_list, name_count
-; Output:	Z set = it was asked for
+; Output:	Z set = it was asked for, by its path or a directory it is
+;		in (match_path)
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -1077,9 +1324,7 @@ member_selected.next:
 		push	hl
 		inc	hl		; past the flag
 		ex	de,hl		; DE -> the name given
-		ld	hl,lzh_name
-		ld	bc,(lzh_name_length)
-		call	match_name	; Z: it matches
+		call	match_path	; Z: it matches
 		pop	hl
 		pop	bc
 		jr	nz,member_selected.skip
@@ -1094,6 +1339,77 @@ member_selected.skip:
 		djnz	member_selected.next
 		ld	a,c
 		or	a		; Z: one matched
+		ret
+
+; match_path - whether a name given matches the member's path, or a
+;   directory the member is in.
+;
+;   R6: naming a directory extracts what is under it. So the whole path
+;   is tried, then each part of it up to a "\", with and without that
+;   "\": both DOCS and DOCS\ choose DOCS\README.TXT.
+;
+; Input:	DE -> the name given, upper case, ending in 0
+;		lzh_name, lzh_name_length (lzh.as)
+; Output:	Z set = it matches
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	match_given
+
+match_path:
+		ld	(match_given),de
+		ld	hl,lzh_name
+		ld	bc,(lzh_name_length)
+		call	match_name
+		ret	z		; the whole path
+		ld	a,(lzh_name_length)
+		ld	b,a		; B = the bytes left to look at
+		ld	hl,lzh_name
+match_path.scan:
+		ld	a,b
+		or	a
+		jr	z,match_path.no
+		ld	a,(hl)
+		cp	PATH_SEPARATOR
+		jr	z,match_path.part
+		inc	hl
+		dec	b
+		call	kanji_lead	; CY: a pair, so its second byte too
+		jr	nc,match_path.scan
+		ld	a,b
+		or	a
+		jr	z,match_path.no
+		inc	hl
+		dec	b
+		jr	match_path.scan
+match_path.part:
+		push	bc
+		push	hl
+		ld	de,lzh_name	; BC = the length up to the "\"
+		or	a
+		sbc	hl,de
+		ld	b,h
+		ld	c,l
+		push	bc
+		ld	de,(match_given)
+		ld	hl,lzh_name
+		call	match_name	; without it
+		pop	bc
+		jr	z,match_path.matched
+		inc	bc
+		ld	de,(match_given)
+		ld	hl,lzh_name
+		call	match_name	; with it
+match_path.matched:
+		pop	hl
+		pop	bc
+		ret	z
+		inc	hl
+		dec	b
+		jr	match_path.scan
+match_path.no:
+		or	1		; Z clear
 		ret
 
 ; match_name - whether a member's name matches a name given, with its
@@ -1402,8 +1718,7 @@ progress_end:
 progress_prefix:
 		print	msg_cr		; back to the line's start
 		print	msg_extracting
-		printl	lzh_name,(lzh_name_length)
-		ret
+		jp	print_path
 ; check_memory - stop, saying why, unless the window and the tables fit
 ;   in the free mapper memory, as R7 asks.
 ;
@@ -1460,8 +1775,10 @@ check_memory:
 ;
 ;   Of the attributes only read-only, hidden and system (bits 0 to 2) are
 ;   set, with the archive bit, which _CREATE set already; nothing is
-;   done when none of the three is set. Errors are not reported: the
-;   file is extracted and right, only its date or attributes are not.
+;   done when none of the three is set. A directory (-lhd-) can only
+;   be made hidden: that bit is added to the ones it has. Errors are
+;   not reported: the file is extracted and right, only its date or
+;   attributes are not.
 ;
 ; Input:	out_name, lzh.as's variables
 ; Output:	the file's date, and its attributes
@@ -1484,10 +1801,23 @@ set_date_attributes.set:
 		ld	de,out_name
 		ld	a,1		; set
 		dos	_FTIME
+		ld	a,(member_kind)
+		cp	"d"
 		ld	a,(lzh_attributes)
+		jr	z,set_date_attributes.directory
 		and	07h		; read-only, hidden, system
 		ret	z
 		or	20h		; and archive, which it has
+		jr	set_date_attributes.attributes
+set_date_attributes.directory:
+		and	02h		; hidden
+		ret	z
+		ld	de,out_name	; added to what it has: the others
+		xor	a		;   cannot be changed (.IATTR)
+		dos	_ATTR		; get: L
+		ld	a,l
+		or	02h
+set_date_attributes.attributes:
 		ld	l,a
 		ld	de,out_name
 		ld	a,1		; set
@@ -1564,11 +1894,30 @@ pack_date.early:
 		ld	ix,0
 		ret
 
+; print_path - the member's path, on standard output; a -lhd-
+;   member's ends in "\".
+;
+; Input:	lzh_name, lzh_name_length, lzh_method (lzh.as)
+; Output:	the path is printed
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+print_path:
+		printl	lzh_name,(lzh_name_length)
+		ld	a,(lzh_method+3)
+		cp	"d"
+		ret	nz
+		print	msg_separator
+		ret
+
 ; print_member - one line of the listing: the member just read.
 ;
 ;   The line is built in line_text, whose separators are fixed: the
 ;   packed and original sizes, 10 digits wide; the method; the date; then
-;   the name, printed after it with printl, since it may hold a "$".
+;   the path, printed after it by print_path, since it may hold a "$".
 ;
 ; Input:	lzh_packed, lzh_original, lzh_method, lzh_time, lzh_level,
 ;		lzh_name, lzh_name_length (lzh.as)
@@ -1597,7 +1946,7 @@ print_member:
 		ldir
 		call	format_date
 		printl	line_text,LINE_FIXED
-		printl	lzh_name,(lzh_name_length)
+		call	print_path
 		print	msg_crlf
 		ret
 
@@ -1955,6 +2304,7 @@ msg_ok:		defb	" OK",CHR_CR,CHR_LF,"$"
 msg_crc_error:	defb	" CRC error",CHR_CR,CHR_LF,"$"
 msg_exists:	defb	": it already exists",CHR_CR,CHR_LF,"$"
 msg_colon:	defb	": $"
+msg_separator:	defb	PATH_SEPARATOR,"$"
 msg_not_yet:	defb	" is not supported yet",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
 msg_space_need:	defb	"Extracting this archive would take $"
@@ -2002,20 +2352,26 @@ pct_text:	defb	"   0%$"
 ; out_handle		the file being extracted
 ; out_name		its name, zero-terminated, with dest_path: 384
 ;			bytes, in the buffers segment
+; out_member		where the member's path starts in out_name
 ; remaining		its data still to copy, 4 bytes
 ; chunk			the bytes in copy_buffer this time round
 ; dest_path		/D:'s path, zero-terminated; empty without /D
-; dest_mode		walk_dest: 0 counts directories, 1 creates them
-; dest_error		walk_dest: the first error creating them
+; dest_mode		walk_parts: 0 counts directories, 1 creates them
+; dest_error		walk_parts: the first error creating them
+; walk_path, walk_end	walk_parts: the path, and where the walk ends
+; dirs_end		member_dirs: the end of the member's directories
+; dirs_shared		member_dirs: where those not shared start
+; last_dir, last_length	member_dirs: the directories of the member
+;			before, in the buffers segment, and how long
 ; dest_letter		the drive extracted to, for the message
-; new_dirs		the directories /D: will create
+; new_dirs		the directories the extraction will create
 ; cluster_shift		log2 of the cluster's size, in bytes
 ; free_clusters		_ALLOC's free clusters
 ; need_clusters		what the extraction takes, 4 bytes
 ; stop_code		not_extracted: what stopped the extraction
 ; walked		not_extracted: the members walked again
-; member_kind		the member's method's digit, "0" or "4" to "7",
-;			as member_supported found it
+; member_kind		the member's method's letter: "0", "4" to "7",
+;			or "d", as member_supported found it
 ; need_segs		check_space: the largest window, in segments;
 ;			check_memory: and the tables'
 ; free_segs		mapfree's free segments
@@ -2029,6 +2385,7 @@ pct_text:	defb	"   0%$"
 ; match_end, match_star, match_from
 ;			match_name: the end of the member's name, what
 ;			follows the last "*", where that "*" starts
+; match_given		match_path: the name given
 ; size_round, size_value, size_text
 ;			print_size: rounding up or not, the amount in
 ;			tenths, and the number, 10 wide
@@ -2059,6 +2416,12 @@ chunk:	defs	2
 dest_path:	defs	128
 dest_mode:	defs	1
 dest_error:	defs	1
+walk_path:	defs	2
+walk_end:	defs	2
+dirs_end:	defs	2
+dirs_shared:	defs	2
+last_length:	defs	1
+out_member:	defs	2
 dest_letter:	defs	1
 new_dirs:	defs	2
 cluster_shift:	defs	1
@@ -2083,10 +2446,12 @@ name_count:	defs	1
 match_end:	defs	2
 match_star:	defs	2
 match_from:	defs	2
+match_given:	defs	2
 
 		dseg	buffers
 copy_buffer:	defs	COPY_SIZE
 out_name:	defs	384
+last_dir:	defs	255
 
 		end	main
 

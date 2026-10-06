@@ -184,6 +184,44 @@ echo --- unkago /O /D:lh5 ..\unkago\far7.lzh>>..\results.txt
 ..\..\build\unkago /O /D:lh5 ..\unkago\far7.lzh>>..\results.txt
 cd ..\..
 
+rem DIRECTORIES runs in TESTS\OUT and extracts into TESTS\OUT\DIRS,
+rem PATHS and SEL2: trees from each header level, -lhd- members, paths
+rem that are cleaned (from the root, with a drive, with . and ..), a
+rem directory that cannot be made, and members chosen by directory.
+rem What they hold, dates and the hidden HID included, goes into
+rem TESTS\DATES.TXT.
+echo === UNKAGO DIRECTORIES>>tests\results.txt
+cd tests\out
+echo --- unkago /L ..\unkago\tree.lzh>>..\results.txt
+..\..\build\unkago /L ..\unkago\tree.lzh>>..\results.txt
+echo --- unkago /O /D:dirs ..\unkago\tree.lzh>>..\results.txt
+..\..\build\unkago /O /D:dirs ..\unkago\tree.lzh>>..\results.txt
+echo --- unkago /D:dirs ..\unkago\tree.lzh>>..\results.txt
+..\..\build\unkago /D:dirs ..\unkago\tree.lzh>>..\results.txt
+echo --- unkago /O /D:dirs\l0 ..\unkago\dirl0.lzh>>..\results.txt
+..\..\build\unkago /O /D:dirs\l0 ..\unkago\dirl0.lzh>>..\results.txt
+echo --- unkago /O /D:dirs\l1 ..\unkago\dirl1.lzh>>..\results.txt
+..\..\build\unkago /O /D:dirs\l1 ..\unkago\dirl1.lzh>>..\results.txt
+echo --- unkago /O /D:dirs\h0 ..\unkago\dirh0.lzh>>..\results.txt
+..\..\build\unkago /O /D:dirs\h0 ..\unkago\dirh0.lzh>>..\results.txt
+echo --- unkago /O /D:dirs\h1 ..\unkago\dirh1.lzh>>..\results.txt
+..\..\build\unkago /O /D:dirs\h1 ..\unkago\dirh1.lzh>>..\results.txt
+echo --- unkago /O /D:dirs\h2 ..\unkago\dirh2.lzh>>..\results.txt
+..\..\build\unkago /O /D:dirs\h2 ..\unkago\dirh2.lzh>>..\results.txt
+echo --- unkago /L ..\unkago\paths.lzh>>..\results.txt
+..\..\build\unkago /L ..\unkago\paths.lzh>>..\results.txt
+echo --- unkago /O /D:paths ..\unkago\paths.lzh>>..\results.txt
+..\..\build\unkago /O /D:paths ..\unkago\paths.lzh>>..\results.txt
+echo --- unkago /O /D:sel2 ..\unkago\tree.lzh tree\sub>>..\results.txt
+..\..\build\unkago /O /D:sel2 ..\unkago\tree.lzh tree\sub>>..\results.txt
+echo --- unkago /L ..\unkago\tree.lzh *\deep>>..\results.txt
+..\..\build\unkago /L ..\unkago\tree.lzh *\deep>>..\results.txt
+cd ..\..
+dir tests\out\dirs\tree>>tests\dates.txt
+dir tests\out\dirs\tree\sub>>tests\dates.txt
+dir tests\out\paths>>tests\dates.txt
+dir /h tests\out\paths>>tests\dates.txt
+
 rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
 rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves
 rem too little, and UNKAGO must refuse; with more memory it extracts.

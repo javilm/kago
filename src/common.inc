@@ -20,6 +20,7 @@
 		extrn	format_number
 		extrn	print_zero
 		extrn	print_explanation
+		extrn	kanji_lead
 
 		include	alloc.inc	; MapperHeap: heapinit, p2restore...
 

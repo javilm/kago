@@ -19,6 +19,7 @@
 		public	format_number
 		public	print_zero
 		public	print_explanation
+		public	kanji_lead
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	ascii.inc	; CHR_SPACE, CHR_TAB
@@ -431,6 +432,42 @@ print_explanation:
 		system	_EXPLAIN
 		ld	de,explain_text
 		jp	print_zero
+
+; kanji_lead - whether a byte starts a two-byte character, as MSX-DOS2
+;   sees it.
+;
+;   A Japanese MSX can have Shift-JIS names, whose second byte may be a
+;   "\" (5Ch) that separates nothing; elsewhere the same bytes are
+;   characters of their own, accented letters. _CHKCHR knows which is
+;   the case here. It is asked only about bytes 80h and up: no ASCII
+;   character starts a pair.
+;
+; Input:	A = the byte
+; Output:	CY set = it starts a two-byte character
+; Modifies:	F
+; Scratch:	none
+
+kanji_lead:
+		cp	80h
+		ccf
+		ret	nc		; ASCII: CY clear
+		push	bc
+		push	de
+		push	hl
+		push	af
+		ld	e,a
+		ld	d,0		; the flags: as at a string's start
+		call	safe_p2restore
+		system	_CHKCHR		; D: bit 1 set for a pair's first byte
+		ld	a,d
+		rra			; bit 1, into CY
+		rra
+		pop	hl		; H = the byte
+		ld	a,h
+		pop	hl
+		pop	de
+		pop	bc
+		ret
 
 ; safe_p2restore - p2restore, keeping the registers it would destroy.
 ;

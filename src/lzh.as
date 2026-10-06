@@ -7,9 +7,11 @@
 ; read. The layouts follow lhasa (reference/lhasa, lib/lha_file_header.c
 ; and lib/ext_header.c), which reads all three the same way.
 ;
-; It keeps what listing and extracting need: the name, the method, the
+; It keeps what listing and extracting need: the path, the method, the
 ; packed and original sizes, the date, the level, the data's CRC and
-; the MS-DOS attributes. Directories come later.
+; the MS-DOS attributes. The path is the directories and the name,
+; whichever way the header keeps them, made into one that MSX-DOS can
+; take and that stays inside the destination (make_path).
 
 LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 
@@ -42,7 +44,9 @@ COMMON_SIZE	equ	22		; what is read first: enough for the
 					;   level byte, at offset 20, and
 					;   level 0/1's name length, at 21
 EXT_FILENAME	equ	01h		; extended header type: the file name
+EXT_DIRECTORY	equ	02h		; the directories, 0FFh after each
 EXT_ATTRIBUTES	equ	40h		; and the MS-DOS attributes
+SEPARATOR	equ	5Ch		; "\": the path's separator, made
 
 		cseg
 
@@ -110,10 +114,12 @@ lzh_rewind:
 ;   Phase 1. On return with a member, the file is at the start of its
 ;   data, and lzh_packed holds the data's size.
 ;
+;   read_header reads it; make_path, last, makes the path.
+;
 ; Input:	none
 ; Output:	A = LZH_MEMBER, LZH_END, LZH_TRUNCATED, LZH_DAMAGED or
 ;		LZH_LEVEL3 (lzh.inc), or an MSX-DOS error code
-;		lzh_name, lzh_name_length: the name, with LZH_MEMBER
+;		lzh_name, lzh_name_length: the path, with LZH_MEMBER
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -121,6 +127,25 @@ lzh_rewind:
 ; Scratch:	none
 
 lzh_next_header:
+		xor	a
+		ld	(dir_length),a	; none, until type 2 gives some
+		call	read_header
+		or	a
+		ret	nz
+		jp	make_path	; A = LZH_MEMBER from it too
+
+; read_header - read the next member's header, as it is stored.
+;
+; Input:	none
+; Output:	as lzh_next_header, but lzh_name holds only the name, and
+;		dir_text, dir_length the directories of a type 2 header
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+read_header:
 		ld	de,lzh_header
 		ld	hl,COMMON_SIZE
 		call	read_bytes	; HL = how many were read
@@ -128,33 +153,33 @@ lzh_next_header:
 		ret	nz		; an MSX-DOS error
 		ld	a,h
 		or	l
-		jr	z,lzh_next_header.end	; nothing at all
+		jr	z,read_header.end	; nothing at all
 		ld	a,(lzh_header)
 		or	a
-		jr	nz,lzh_next_header.not_end
+		jr	nz,read_header.not_end
 		ld	a,l
 		cp	COMMON_SIZE
-		jr	c,lzh_next_header.end	; a 0 and less than a header
+		jr	c,read_header.end	; a 0 and less than a header
 		ld	a,(lzh_header+20)
 		cp	2
-		jr	nz,lzh_next_header.end	; a 0, and not level 2
-lzh_next_header.not_end:
+		jr	nz,read_header.end	; a 0, and not level 2
+read_header.not_end:
 		ld	a,l
 		cp	COMMON_SIZE
-		jr	c,lzh_next_header.truncated
+		jr	c,read_header.truncated
 		ld	a,(lzh_header+20)	; the level
 		cp	3
-		jr	z,lzh_next_header.level3
-		jr	nc,lzh_next_header.damaged	; 4 and up: damaged
+		jr	z,read_header.level3
+		jr	nc,read_header.damaged	; 4 and up: damaged
 		ld	a,(lzh_header+2)	; the method: "-l??-"
 		cp	"-"
-		jr	nz,lzh_next_header.damaged
+		jr	nz,read_header.damaged
 		ld	a,(lzh_header+3)
 		cp	"l"
-		jr	nz,lzh_next_header.damaged
+		jr	nz,read_header.damaged
 		ld	a,(lzh_header+6)
 		cp	"-"
-		jr	nz,lzh_next_header.damaged
+		jr	nz,read_header.damaged
 		ld	hl,lzh_header+2	; the method, the packed and original
 		ld	de,lzh_method	;   sizes and the time: 17 bytes at 2,
 		ld	bc,17		;   in the same order
@@ -167,16 +192,16 @@ lzh_next_header.not_end:
 		cp	2
 		jp	z,read_level2
 		jp	read_level01
-lzh_next_header.end:
+read_header.end:
 		ld	a,LZH_END
 		ret
-lzh_next_header.truncated:
+read_header.truncated:
 		ld	a,LZH_TRUNCATED
 		ret
-lzh_next_header.level3:
+read_header.level3:
 		ld	a,LZH_LEVEL3
 		ret
-lzh_next_header.damaged:
+read_header.damaged:
 		ld	a,LZH_DAMAGED
 		ret
 
@@ -364,7 +389,8 @@ read_ext_chain.next:
 		ret	z		; the end of the chain: A = 0
 		ld	de,3
 		sbc	hl,de		; carry clear from OR L
-		jr	c,read_ext_chain.damaged	; smaller than 3
+		jp	c,read_ext_chain.damaged	; smaller than 3: too
+					;   far for jr
 		ld	(ext_data),hl	; HL = the data's length
 		ld	hl,(ext_consumed)
 		ld	de,(ext_size)
@@ -391,6 +417,8 @@ read_ext_chain.type:
 		ld	a,(ext_type)
 		cp	EXT_ATTRIBUTES
 		jr	z,read_ext_chain.attributes
+		cp	EXT_DIRECTORY
+		jr	z,read_ext_chain.directory
 		cp	EXT_FILENAME
 		jr	nz,read_ext_chain.skip
 		ld	hl,(ext_data)	; the name: up to 255 bytes of it
@@ -442,6 +470,280 @@ read_ext_chain.attributes:
 		or	a
 		ret	nz
 		jr	read_ext_chain.skip
+read_ext_chain.directory:
+		ld	hl,(ext_data)	; the directories: up to 254 bytes
+		ld	a,h
+		or	a
+		ld	a,254
+		jr	nz,read_ext_chain.dir_cut	; 256 and more
+		cp	l
+		jr	c,read_ext_chain.dir_cut	; 255
+		ld	a,l
+read_ext_chain.dir_cut:
+		ld	(dir_length),a
+		ld	e,a		; DE = the bytes kept
+		ld	d,0
+		or	a
+		sbc	hl,de
+		ld	(ext_data),hl	; what is left to skip
+		ld	a,e
+		or	a
+		jr	z,read_ext_chain.skip	; nothing to read
+		ex	de,hl
+		ld	de,dir_text
+		call	read_exact
+		or	a
+		ret	nz
+		jr	read_ext_chain.skip
+
+; make_path - the member's whole path, clean, in lzh_name.
+;
+;   Level 1 and 2 headers may keep the directories apart, in an
+;   extended header of type 2: they go in front of the name, a
+;   separator between, the whole cut at 255 bytes. clean_path then
+;   tidies it, whatever the level.
+;
+; Input:	lzh_name, lzh_name_length: the name
+;		dir_text, dir_length: the directories, if any
+; Output:	lzh_name, lzh_name_length: the path
+;		A = LZH_MEMBER
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+make_path:
+		ld	a,(dir_length)
+		or	a
+		jr	z,clean_path	; the name alone
+		inc	a		; C = the directories and a separator
+		ld	c,a
+		ld	a,(lzh_name_length)
+		ld	b,a		; B = the name, cut to what is left
+		ld	a,255
+		sub	c
+		cp	b
+		jr	nc,make_path.fits
+		ld	b,a
+make_path.fits:
+		ld	a,b
+		add	a,c
+		ld	(lzh_name_length),a	; the high byte is still 0
+		ld	a,b
+		or	a
+		jr	z,make_path.moved	; no name to move
+		push	bc
+		ld	e,b		; the name, C bytes on, from its end
+		ld	d,0
+		ld	hl,lzh_name-1
+		add	hl,de		; HL -> its last byte
+		push	hl
+		ld	e,c
+		add	hl,de
+		ex	de,hl		; DE -> where it goes
+		pop	hl
+		ld	c,b
+		ld	b,0
+		lddr
+		pop	bc
+make_path.moved:
+		dec	c		; the directories in front
+		ld	b,0
+		ld	hl,dir_text
+		ld	de,lzh_name
+		ldir
+		ld	a,SEPARATOR	; then the separator
+		ld	(de),a		; and on into clean_path
+
+; clean_path - make lzh_name a path MSX-DOS can take, and one that
+;   stays inside the destination.
+;
+;   "\", "/" and 0FFh all separate directories (MS-DOS, Unix and LHA's
+;   extended headers): each becomes "\". A drive at the start ("A:")
+;   goes, and so do empty parts, which takes off separators at the
+;   start, so nothing is taken from the root. "." goes; ".." takes off
+;   the part before it, but never climbs above the start, as lhasa
+;   does. A separator at the end, as level 0 writes after a directory,
+;   goes too. The second byte of a two-byte character is never taken
+;   for a separator.
+;
+;   The path is rewritten where it is: writing never gets ahead of
+;   reading, since every part and separator written was read first.
+;
+; Input:	lzh_name, lzh_name_length
+; Output:	the same, clean
+;		A = LZH_MEMBER
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	clean_end
+;		part_start
+
+clean_path:
+		ld	hl,(lzh_name_length)	; just after the path
+		ld	de,lzh_name
+		add	hl,de
+		ld	(clean_end),hl
+		ld	hl,lzh_name	; HL reads, DE writes
+		ld	a,(lzh_name_length)
+		cp	2
+		jr	c,clean_path.part
+		ld	a,(lzh_name+1)
+		cp	":"
+		jr	nz,clean_path.part
+		inc	hl		; past a drive
+		inc	hl
+clean_path.part:
+		call	clean_at_end	; Z: no more
+		jr	z,clean_path.done
+		ld	(part_start),hl
+clean_path.scan:
+		call	clean_at_end
+		jr	z,clean_path.ended
+		ld	a,(hl)
+		call	is_separator	; Z: one
+		jr	z,clean_path.ended
+		inc	hl
+		call	kanji_lead	; CY: a pair, so its second byte too
+		jr	nc,clean_path.scan
+		call	clean_at_end
+		jr	z,clean_path.ended
+		inc	hl
+		jr	clean_path.scan
+clean_path.ended:
+		push	hl		; HL -> the separator, or the end
+		ld	bc,(part_start)
+		or	a
+		sbc	hl,bc
+		ld	b,h		; BC = the part's length
+		ld	c,l
+		ld	hl,(part_start)
+		call	clean_part	; written, or not
+		pop	hl
+		call	clean_at_end
+		jr	z,clean_path.done
+		inc	hl		; past the separator
+		jr	clean_path.part
+clean_path.done:
+		ex	de,hl		; the length: as far as writing got
+		ld	de,lzh_name
+		or	a
+		sbc	hl,de
+		ld	(lzh_name_length),hl
+		xor	a		; LZH_MEMBER
+		ret
+
+; clean_part - one part of the path, written after what is clean.
+;
+;   Nothing for an empty part or "."; for "..", the last part written
+;   is taken off again; anything else is written, after a separator
+;   unless it is the first.
+;
+; Input:	HL -> the part
+;		BC = its length, 0 to 255
+;		DE -> where writing has got to
+; Output:	DE -> where writing has got to now
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+clean_part:
+		ld	a,c
+		or	a
+		ret	z		; empty
+		cp	1
+		jr	z,clean_part.one
+		cp	2
+		jr	nz,clean_part.keep
+		ld	a,(hl)
+		cp	"."
+		jr	nz,clean_part.keep
+		inc	hl
+		ld	a,(hl)
+		dec	hl
+		cp	"."
+		jr	z,clean_part.up	; ".."
+		jr	clean_part.keep
+clean_part.one:
+		ld	a,(hl)
+		cp	"."
+		ret	z		; "."
+clean_part.keep:
+		push	hl
+		ld	hl,lzh_name	; a separator first, unless first
+		or	a
+		sbc	hl,de
+		pop	hl
+		jr	z,clean_part.copy
+		ld	a,SEPARATOR
+		ld	(de),a
+		inc	de
+clean_part.copy:
+		ldir
+		ret
+clean_part.up:
+		ld	hl,lzh_name	; back to the last separator written,
+		ld	b,h		;   or to the start: BC -> it
+		ld	c,l
+clean_part.find:
+		or	a
+		sbc	hl,de
+		add	hl,de
+		jr	z,clean_part.found	; all of it looked at
+		ld	a,(hl)
+		cp	SEPARATOR
+		jr	nz,clean_part.char
+		ld	b,h
+		ld	c,l
+clean_part.char:
+		inc	hl
+		call	kanji_lead
+		jr	nc,clean_part.find
+		or	a		; a pair: its second byte too
+		sbc	hl,de
+		add	hl,de
+		jr	z,clean_part.found
+		inc	hl
+		jr	clean_part.find
+clean_part.found:
+		ld	d,b
+		ld	e,c
+		ret
+
+; clean_at_end - whether HL is at the end of the path.
+;
+; Input:	HL, clean_end
+; Output:	Z set = it is
+; Modifies:	F
+; Scratch:	none
+
+clean_at_end:
+		push	de
+		ld	de,(clean_end)
+		or	a
+		sbc	hl,de
+		add	hl,de		; Z from the SBC
+		pop	de
+		ret
+
+; is_separator - whether A separates parts of a stored path.
+;
+; Input:	A
+; Output:	Z set = it is "\", "/" or 0FFh
+; Modifies:	F
+; Scratch:	none
+
+is_separator:
+		cp	SEPARATOR
+		ret	z
+		cp	"/"
+		ret	z
+		cp	0FFh
+		ret
 
 ; lzh_skip_data - skip the data of the member just read.
 ;
@@ -571,8 +873,14 @@ seek:
 
 ; Variables for the routines above:
 ;
-; lzh_name		the member's name, as stored, up to 255 bytes
+; lzh_name		the member's path, made by make_path, up to 255
+;			bytes; read_header leaves only the name in it
 ; lzh_name_length	how long it is: a word, 0 to 255
+; dir_text		the directories of a type 2 extended header, as
+;			stored, up to 254 bytes
+; dir_length		how long they are, 0 for none
+; clean_end		clean_path: just after the path
+; part_start		clean_path: where the part being read starts
 ; lzh_handle		the archive's file handle
 ; lzh_size		the archive's size, 4 bytes
 ; lzh_position		where lzh_skip_data left the file pointer
@@ -608,6 +916,10 @@ lzh_crc:	defs	2
 lzh_attributes:	defs	1
 lzh_rest:	defs	2
 lzh_header:	defs	257
+dir_text:	defs	254
+dir_length:	defs	1
+clean_end:	defs	2
+part_start:	defs	2
 
 		dseg	scratch,transient
 		group	read_ext_chain
