@@ -1,6 +1,6 @@
-; kago.as - KAGO, the compressor. It writes LZH and ZIP archives, every
-; member stored, of the files and directory trees named on the command
-; line, and with /A adds to an LZH or ZIP archive that is there.
+; kago.as - KAGO, the compressor. It writes LZH and ZIP archives of the
+; files and directory trees named on the command line, and with /A adds
+; to an LZH or ZIP archive that is there.
 ;
 ; It checks for MSX-DOS2 and the command line, and chooses the format:
 ; /F: names it, or the archive's extension does. LZH and ZIP are
@@ -13,16 +13,21 @@
 ; a file, *
 ; and ? allowed, found with MSX-DOS2's _FFIRST and _FNEXT; each file
 ; found is added, its path as typed less the drive (word_dirs), its
-; date, time and attributes, its data stored and its CRC computed on
-; the way: CRC-16 for LZH, CRC-32 for ZIP. The header goes in front of
-; the data, written again once the CRC and the size are known (lzhw.as
-; makes LZH's, zipw.as ZIP's). A ZIP archive ends with its central
-; directory, kept in mapper segments until then. A directory found is
+; date, time and attributes, and its data, its CRC computed on the way:
+; CRC-16 for LZH, CRC-32 for ZIP. In an LZH archive the data is packed,
+; -lh5- (lh5w.as); it is stored instead in ZIP, with /0, when the file
+; is empty, and when packing does not make it smaller (pack_or_store).
+; The header goes in front of the data, written again once the CRC and
+; the sizes are known (lzhw.as makes LZH's, zipw.as ZIP's). A ZIP
+; archive ends with its central directory, kept in mapper segments
+; until then. A directory found is
 ; added whole: a -lhd- member, then everything in it, at every depth
 ; (add_tree). The archive itself, if a name matches it, is passed over,
 ; and so is a path added already in this run (path_check).
 ; An archive nothing was added to is deleted. Any MSX-DOS error stops,
 ; the archive deleted.
+
+		public	archive_write	; for lh5w.as
 
 		include	common.inc	; common.as's routines, and print
 		include	crc.inc		; crc.as: the CRC-16
@@ -32,6 +37,7 @@
 		include	seglist.inc	; seglist.as: lists in the mapper
 		include	lzh.inc		; lzh.as: reading the old archive
 		include	zip.inc		; zip.as: reading an old ZIP one
+		include	lh5w.inc	; lh5w.as: packing, -lh5-
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .NOFIL...
@@ -122,6 +128,10 @@ main.files:
 		ld	hl,adding_line	; what the line starts with
 		ld	(progress_line),hl
 		call	crc_tables	; CRC-16's table, or CRC-32's
+		ld	c,"0"		; /0: everything stored
+		call	switch_given
+		sbc	a,a
+		ld	(storing),a
 		ld	hl,0
 		ld	(added),hl
 		ld	a,(appending)
@@ -513,10 +523,14 @@ add_word.refused:
 ;   first walk, only its path is kept (path_collect). A file added
 ;   already in this run says so, and is not added again. A file is opened
 ;   through its FIB; its header is written as far as it is known (the
-;   CRC still 0), then its data, COPY_SIZE bytes at a time, the CRC
-;   computed and the bytes counted on the way; then the header again,
-;   in its place, with the CRC and the size as read. On the screen the
-;   line shows the percentage as the data is copied.
+;   CRC still 0), then its data, COPY_SIZE bytes at a time, packed
+;   (lh5w_block) or stored, the CRC computed and the bytes counted on
+;   the way; then the header again, in its place, with the CRC and the
+;   sizes. Packing that reaches the file's own size stops: the file and
+;   the archive go back to the data's start (data_at), and the file is
+;   stored instead, over what was packed. On the screen the line shows
+;   the percentage as the data is read, from 0 again if it is stored
+;   after all.
 ;
 ; Input:	fib: the entry
 ;		lzhw_dir: the word's directories (word_dirs)
@@ -546,10 +560,7 @@ add_entry.file:
 		call	path_check	; CY: added already
 		jp	c,already
 		call	entry_details	; the size, for the line and for now
-		ld	hl,method_lh0	; stored
-		ld	de,lzhw_method
-		ld	bc,5
-		ldir
+		call	pack_or_store	; packing, lzhw_method
 		ld	de,fib
 		ld	a,1		; open mode: no writing
 		dos	_OPEN		; B = the handle
@@ -558,10 +569,26 @@ add_entry.file:
 		ld	a,b
 		ld	(in_handle),a
 		call	write_header	; as far as it is known
+		ld	a,1		; where the data starts: data_at
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	archive_seek
+		ld	(data_at),hl
+		ld	(data_at+2),de
 		call	adding_line	; Adding, or Replacing, and the path
-		ld	hl,(lzhw_size)
-		ld	de,(lzhw_size+2)
+add_entry.again:
+		ld	hl,(fib+FIB_SIZE)
+		ld	de,(fib+FIB_SIZE+2)
 		call	progress_start	; "   0%", on the screen
+		ld	a,(packing)
+		or	a
+		jr	z,add_entry.crc
+		ld	hl,(fib+FIB_SIZE)	; packing stops at its size
+		ld	de,(fib+FIB_SIZE+2)
+		call	lh5w_start	; CY: no memory for its tables
+		jp	c,no_memory
+add_entry.crc:
 		call	crc_start	; the data's CRC
 		ld	hl,0
 		ld	(lzhw_size),hl	; and its size, as it is read
@@ -583,9 +610,19 @@ add_entry.read:
 		ld	c,l
 		ld	de,copy_buffer
 		call	crc_add
-		ld	de,copy_buffer
+		ld	a,(packing)
+		or	a
+		jr	z,add_entry.store
+		ld	de,copy_buffer	; packed
+		ld	bc,(chunk)
+		call	lh5w_block	; CY: no smaller than the file
+		jp	c,add_entry.unpackable	; too far for jr
+		jr	add_entry.count
+add_entry.store:
+		ld	de,copy_buffer	; stored
 		ld	hl,(chunk)
 		call	archive_write
+add_entry.count:
 		ld	hl,(lzhw_size)	; the size, counted
 		ld	de,(chunk)
 		add	hl,de
@@ -598,6 +635,20 @@ add_entry.read:
 		call	progress_update
 		jr	add_entry.copy
 add_entry.copied:
+		ld	a,(packing)
+		or	a
+		jr	z,add_entry.stored
+		call	lh5w_end	; DE:HL = the packed size
+		jr	c,add_entry.unpackable
+		ld	(lzhw_packed),hl
+		ld	(lzhw_packed+2),de
+		jr	add_entry.close
+add_entry.stored:
+		ld	hl,lzhw_size	; stored: as long as the data
+		ld	de,lzhw_packed
+		ld	bc,4
+		ldir
+add_entry.close:
 		ld	a,(in_handle)
 		ld	b,a
 		dos	_CLOSE
@@ -622,6 +673,27 @@ add_entry.copied:
 		inc	hl
 		ld	(added),hl
 		ret
+add_entry.unpackable:
+		xor	a		; stored after all, from the start
+		ld	(packing),a
+		ld	hl,method_lh0
+		ld	de,lzhw_method
+		ld	bc,5
+		ldir
+		ld	a,(in_handle)	; the file, from its start
+		ld	b,a
+		xor	a
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		dos	_SEEK
+		or	a
+		jp	nz,fail
+		xor	a		; the archive, from the data's
+		ld	hl,(data_at)	;   start: what was packed is
+		ld	de,(data_at+2)	;   shorter than what goes over it
+		call	archive_seek
+		jp	add_entry.again	; too far for jr
 add_entry.directory:
 		ld	a,(fib+FIB_NAME)	; "." and "..": passed over
 		cp	"."
@@ -707,10 +779,10 @@ add_tree.searched:
 		ret
 
 ; entry_details - the member's attributes, date, time and size, from
-;   the FIB; its CRC 0, for now.
+;   the FIB; its packed size the same, and its CRC 0, for now.
 ;
 ; Input:	fib
-; Output:	lzhw_attr, lzhw_date, lzhw_size, lzhw_crc
+; Output:	lzhw_attr, lzhw_date, lzhw_size, lzhw_packed, lzhw_crc
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -728,10 +800,53 @@ entry_details:
 		ld	de,lzhw_size
 		ld	bc,4
 		ldir
+		ld	hl,fib+FIB_SIZE
+		ld	de,lzhw_packed
+		ld	bc,4
+		ldir
 		ld	hl,0
 		ld	(lzhw_crc),hl
 		ld	(zipw_crc),hl
 		ld	(zipw_crc+2),hl
+		ret
+
+; pack_or_store - whether a file's data is packed: in an LZH archive,
+;   without /0, and not empty. Its method, -lh5- or -lh0-, for the
+;   header.
+;
+; Input:	out_format, storing; lzhw_size
+; Output:	packing: 1 to pack, 0 to store
+;		lzhw_method
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+pack_or_store:
+		ld	a,(out_format)	; ZIP, or /0: stored
+		ld	hl,storing
+		or	(hl)
+		ld	a,0
+		jr	nz,pack_or_store.set
+		ld	hl,(lzhw_size)	; an empty file too
+		ld	de,(lzhw_size+2)
+		ld	a,h
+		or	l
+		or	d
+		or	e
+		jr	z,pack_or_store.set
+		ld	a,1
+pack_or_store.set:
+		ld	(packing),a
+		ld	hl,method_lh0
+		or	a
+		jr	z,pack_or_store.method
+		ld	hl,method_lh5
+pack_or_store.method:
+		ld	de,lzhw_method
+		ld	bc,5
+		ldir
 		ret
 
 ; write_header - the member's header, where the archive is now.
@@ -2038,11 +2153,12 @@ fail_closed:
 ; msg_adding, msg_replacing, msg_ok, msg_skipping, msg_colon, msg_crlf,
 ; msg_dotdot, msg_already
 ;			adding's words, put together per member
-; method_lh0, method_lhd	the methods: stored, a directory
+; method_lh0, method_lh5, method_lhd
+;			the methods: stored, packed, a directory
 ; no_name, end_mark	a 0 byte: the empty name, for "everything in
 ;			it", and the end of an archive
 ;
-switch_letters:	defb	"AFYQV?",0
+switch_letters:	defb	"AFYQV0?",0
 msg_need_dos2:	defb	"ERROR: KAGO needs MSX-DOS2 or Nextor."
 		defb	CHR_CR,CHR_LF,"$"
 msg_banner:
@@ -2062,6 +2178,8 @@ msg_usage:
 		defb	"  /F:fmt  the format: LZH, PMA or ZIP. Without it,"
 		defb	CHR_CR,CHR_LF
 		defb	"          the archive name's extension decides"
+		defb	CHR_CR,CHR_LF
+		defb	"  /0      store the files, without packing them"
 		defb	CHR_CR,CHR_LF
 		defb	"  /Y      proceed without asking when memory is short"
 		defb	CHR_CR,CHR_LF
@@ -2115,6 +2233,7 @@ msg_dotdot:	defb	": a path with .. cannot be stored"
 		defb	CHR_CR,CHR_LF,"$"
 msg_already:	defb	": added already",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
+method_lh5:	defb	"-lh5-"
 method_lhd:	defb	"-lhd-"
 no_name:
 end_mark:	defb	0
@@ -2127,6 +2246,7 @@ end_mark:	defb	0
 ; files_at		where the words after it start
 ; write_name		the file written: archive_name, or temp_name
 ; appending		not 0 when /A adds to an archive there
+; storing		not 0 with /0
 ; collecting		not 0 in /A's first walk
 ; old_drive, old_cluster, old_entry
 ;			the old archive's drive, first cluster and name,
@@ -2151,6 +2271,8 @@ end_mark:	defb	0
 ; fib			_FFIRST's and _FNEXT's entry: 64 bytes
 ; in_handle		the file being read, 0FFh for none
 ; header_at		where its header is in the archive, 4 bytes
+; data_at		where its data starts, 4 bytes
+; packing		1 while its data is packed: pack_or_store
 ; chunk			the bytes in copy_buffer this time round
 ; dirs_from, dirs_end, part_from
 ;			word_dirs: where the word's directories start
@@ -2176,6 +2298,7 @@ archive_entry:	defs	13
 files_at:	defs	2
 write_name:	defs	2
 appending:	defs	1
+storing:	defs	1
 collecting:	defs	1
 old_drive:	defs	1
 old_cluster:	defs	2
@@ -2193,6 +2316,8 @@ added:	defs	2
 fib:	defs	64
 in_handle:	defs	1
 header_at:	defs	4
+data_at:	defs	4
+packing:	defs	1
 chunk:	defs	2
 dirs_from:	defs	2
 dirs_end:	defs	2

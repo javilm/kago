@@ -2,6 +2,7 @@
 kago.tro			; the entry point comes first
 lzhw.tro			; writing LZH headers
 zipw.tro			; writing ZIP headers
+lh5w.tro			; packing, -lh5-
 seglist.tro			; lists in the mapper
 lzh.tro				; reading LZH archives, for /A
 zip.tro				; reading ZIP archives, for /A

@@ -1,9 +1,10 @@
 tests\kago\ - the test files for KAGO, and where they come from.
 
-tests.bat extracts kin.lzh with UNKAGO into tests\out\kin, which gives
-its files the dates and attributes below, then archives them with KAGO.
-What KAGO writes lands in tests\out\ too, and is compared on the Mac
-with what the Python model in impl\019-kago-lzh.md writes.
+tests.bat extracts kin.lzh and edge.lzh with UNKAGO into tests\out\kin
+and tests\out\edge, which gives their files the dates and attributes
+below, then archives them with KAGO. What KAGO writes lands in
+tests\out\ too, and is compared on the Mac with what the Python model in
+the latest KAGO note (impl\025-kago-lh5.md, for now) writes.
 
 kin.lzh
     made for Tsuzura by the script in impl\019-kago-lzh.md, level 0.
@@ -22,4 +23,17 @@ kin.lzh
     date; a 29 February; 2100, which is not a leap year; and the last
     even second that 32 bits of seconds since 1970 hold.
     sha256 f3e7311e0a58243b6a2f9da51d72eab40dfb8727fffef1cabe23f1958071cf86
+
+edge.lzh
+    made for Tsuzura by the script in impl\025-kago-lh5.md, level 0,
+    every file stored (-lh0-). The -lh5- encoder's edge cases:
+      ONE.DAT      3000 bytes  2026-10-08 12:00:00  "A" only: a code
+                                                    table of one symbol
+      HALF.DAT     8192 bytes  2026-10-08 12:00:02  bytes 0 to 127, 64
+                                                    times: every code 7
+                                                    bits long
+      ALL.DAT     10240 bytes  2026-10-08 12:00:04  bytes 0 to 255, 40
+                                                    times: no smaller
+                                                    packed, so stored
+    sha256 4472af40d755fe71314b4447c22ac3d83b3f801d93ffdc95265a599e69f626aa
 

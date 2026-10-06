@@ -10,6 +10,7 @@ echo === Assembling...
 tatara /q src\kago.as kago.tro
 tatara /q src\lzhw.as lzhw.tro
 tatara /q src\zipw.as zipw.tro
+tatara /q src\lh5w.as lh5w.tro
 tatara /q src\seglist.as seglist.tro
 tatara /q src\unkago.as unkago.tro
 tatara /q src\lzh.as lzh.tro

@@ -10,6 +10,7 @@ Usage: KAGO [switches] archive files...
   /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
+  /0      store the files, without packing them
   /Y      proceed without asking when memory is short
   /Q      quiet: no progress
   /V      the banner above, and nothing else
@@ -30,6 +31,7 @@ Usage: KAGO [switches] archive files...
   /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
+  /0      store the files, without packing them
   /Y      proceed without asking when memory is short
   /Q      quiet: no progress
   /V      the banner above, and nothing else
@@ -50,6 +52,7 @@ Usage: KAGO [switches] archive files...
   /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
+  /0      store the files, without packing them
   /Y      proceed without asking when memory is short
   /Q      quiet: no progress
   /V      the banner above, and nothing else
@@ -75,6 +78,7 @@ Usage: KAGO [switches] archive files...
   /A      add to the archive, replacing same paths
   /F:fmt  the format: LZH, PMA or ZIP. Without it,
           the archive name's extension decides
+  /0      store the files, without packing them
   /Y      proceed without asking when memory is short
   /Q      quiet: no progress
   /V      the banner above, and nothing else
@@ -583,7 +587,7 @@ Extracting A$B.TXT OK
 Extracting SUB\ OK
 Extracting SUB\IN.TXT OK
 Extracting SUB\DEEP\ OK
---- kago k1.lzh kin\*.*
+--- kago /0 k1.lzh kin\*.*
 Adding KIN\A.TXT OK
 Adding KIN\BIG.DAT OK
 Adding KIN\EMPTY.DAT OK
@@ -818,7 +822,7 @@ Adding KOUT\KIN\SUB\DEEP\ OK
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
         18         18 -lh0-  2001-02-03 04:05 KOUT\KIN\A.TXT
-     70000      70000 -lh0-  1980-01-01 00:00 KOUT\KIN\BIG.DAT
+     40862      70000 -lh5-  1980-01-01 00:00 KOUT\KIN\BIG.DAT
          0          0 -lh0-  2024-02-29 12:34 KOUT\KIN\EMPTY.DAT
         12         12 -lh0-  2100-03-01 00:00 KOUT\KIN\RO.TXT
          9          9 -lh0-  2106-02-07 06:28 KOUT\KIN\HID.TXT
@@ -827,7 +831,7 @@ Adding KOUT\KIN\SUB\DEEP\ OK
         13         13 -lh0-  2026-10-07 10:00 KOUT\KIN\SUB\IN.TXT
          0          0 -lhd-  2026-10-07 10:00 KOUT\KIN\SUB\DEEP\
 ---------- ---------- ------                  ------------
-     70075      70075        9 files
+     40937      70075        9 files
 --- kago /A kout\kin\self.lzh kout\kin\*.*
 Replacing KOUT\KIN\A.TXT OK
 Replacing KOUT\KIN\BIG.DAT OK
@@ -842,7 +846,7 @@ Replacing KOUT\KIN\SUB\DEEP\ OK
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
         18         18 -lh0-  2001-02-03 04:05 KOUT\KIN\A.TXT
-     70000      70000 -lh0-  1980-01-01 00:00 KOUT\KIN\BIG.DAT
+     40862      70000 -lh5-  1980-01-01 00:00 KOUT\KIN\BIG.DAT
          0          0 -lh0-  2024-02-29 12:34 KOUT\KIN\EMPTY.DAT
         12         12 -lh0-  2100-03-01 00:00 KOUT\KIN\RO.TXT
          9          9 -lh0-  2106-02-07 06:28 KOUT\KIN\HID.TXT
@@ -851,7 +855,78 @@ Replacing KOUT\KIN\SUB\DEEP\ OK
         13         13 -lh0-  2026-10-07 10:00 KOUT\KIN\SUB\IN.TXT
          0          0 -lhd-  2026-10-07 10:00 KOUT\KIN\SUB\DEEP\
 ---------- ---------- ------                  ------------
-     70075      70075        9 files
+     40937      70075        9 files
+=== KAGO PACKING
+--- kago k7.lzh kin\*.*
+Adding KIN\A.TXT OK
+Adding KIN\BIG.DAT OK
+Adding KIN\EMPTY.DAT OK
+Adding KIN\RO.TXT OK
+Adding KIN\HID.TXT OK
+Adding KIN\A$B.TXT OK
+Adding KIN\SUB\ OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
+--- unkago /L k7.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        18         18 -lh0-  2001-02-03 04:05 KIN\A.TXT
+     40862      70000 -lh5-  1980-01-01 00:00 KIN\BIG.DAT
+         0          0 -lh0-  2024-02-29 12:34 KIN\EMPTY.DAT
+        12         12 -lh0-  2100-03-01 00:00 KIN\RO.TXT
+         9          9 -lh0-  2106-02-07 06:28 KIN\HID.TXT
+        23         23 -lh0-  2099-12-31 23:59 KIN\A$B.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\
+        13         13 -lh0-  2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\DEEP\
+---------- ---------- ------                  ------------
+     40937      70075        9 files
+--- unkago /O /D:pout k7.lzh
+Extracting KIN\A.TXT OK
+Extracting KIN\BIG.DAT OK
+Extracting KIN\EMPTY.DAT OK
+Extracting KIN\RO.TXT OK
+Extracting KIN\HID.TXT OK
+Extracting KIN\A$B.TXT OK
+Extracting KIN\SUB\ OK
+Extracting KIN\SUB\IN.TXT OK
+Extracting KIN\SUB\DEEP\ OK
+--- kago /A k7.lzh kin\a.txt
+Replacing KIN\A.TXT OK
+--- unkago /L k7.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+     40862      70000 -lh5-  1980-01-01 00:00 KIN\BIG.DAT
+         0          0 -lh0-  2024-02-29 12:34 KIN\EMPTY.DAT
+        12         12 -lh0-  2100-03-01 00:00 KIN\RO.TXT
+         9          9 -lh0-  2106-02-07 06:28 KIN\HID.TXT
+        23         23 -lh0-  2099-12-31 23:59 KIN\A$B.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\
+        13         13 -lh0-  2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\DEEP\
+        18         18 -lh0-  2001-02-03 04:05 KIN\A.TXT
+---------- ---------- ------                  ------------
+     40937      70075        9 files
+--- unkago /O /D:edge ..\kago\edge.lzh
+Extracting ONE.DAT OK
+Extracting HALF.DAT OK
+Extracting ALL.DAT OK
+--- kago k8.lzh edge\*.*
+Adding EDGE\ONE.DAT OK
+Adding EDGE\HALF.DAT OK
+Adding EDGE\ALL.DAT OK
+--- unkago /L k8.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         7       3000 -lh5-  2026-10-08 12:00 EDGE\ONE.DAT
+      7174       8192 -lh5-  2026-10-08 12:00 EDGE\HALF.DAT
+     10240      10240 -lh0-  2026-10-08 12:00 EDGE\ALL.DAT
+---------- ---------- ------                  ------------
+     17421      21432        3 files
+--- unkago /O /D:pout k8.lzh
+Extracting EDGE\ONE.DAT OK
+Extracting EDGE\HALF.DAT OK
+Extracting EDGE\ALL.DAT OK
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

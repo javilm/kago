@@ -1,10 +1,10 @@
 ; lzhw.as - writing an LZH archive: a member's header, level 2.
 ;
-; KAGO describes each member in lzhw.as's variables: its path, its size,
-; its data's CRC-16, its MS-DOS date and time and its attributes; then
-; lzhw_header makes the header from them, ready to be written in front
-; of the data. Every file is stored (-lh0-) until the compressor comes;
-; a directory is -lhd-, its path all directories and its name empty.
+; KAGO describes each member in lzhw.as's variables: its path, its
+; sizes, its data's CRC-16, its MS-DOS date and time and its attributes;
+; then lzhw_header makes the header from them, ready to be written in
+; front of the data. A file is packed (-lh5-) or stored (-lh0-); a
+; directory is -lhd-, its path all directories and its name empty.
 ;
 ; A level 2 header is a fixed part of 26 bytes, then extended headers,
 ; each one its type, its data and the next one's size (lzh.as reads
@@ -12,7 +12,7 @@
 ; way):
 ;
 ;   0	the whole header's length, a word
-;   2	the method, "-lh0-"
+;   2	the method: "-lh5-", "-lh0-" or "-lhd-"
 ;   7	the packed size and the original size, 4 bytes each
 ;   15	the date, in seconds since 1970 (unix_time)
 ;   19	20h, then the level, 2
@@ -34,6 +34,7 @@
 		public	lzhw_dir
 		public	lzhw_length
 		public	lzhw_size
+		public	lzhw_packed
 		public	lzhw_crc
 		public	lzhw_date
 		public	lzhw_attr
@@ -60,7 +61,7 @@ PATH_SEPARATOR	equ	5Ch		; "\" in lzhw_path
 ;   the same, 3 bytes, as LHA writes it.
 ;
 ; Input:	lzhw_method, lzhw_path, lzhw_dir, lzhw_length, lzhw_size,
-;		lzhw_crc, lzhw_date, lzhw_attr
+;		lzhw_packed, lzhw_crc, lzhw_date, lzhw_attr
 ; Output:	DE -> the header, in lzhw_buffer
 ;		HL = its length
 ;		crc_value: the header's CRC (crc.as)
@@ -75,7 +76,7 @@ lzhw_header:
 		ld	de,lzhw_buffer+2
 		ld	bc,5
 		ldir
-		ld	hl,lzhw_size	; the packed size: stored, the same
+		ld	hl,lzhw_packed	; the packed size
 		ld	bc,4
 		ldir
 		ld	hl,lzhw_size	; the original size
@@ -390,13 +391,15 @@ month_days:	defw	0,31,59,90,120,151,181,212,243,273,304,334
 
 ; Variables: the member, as KAGO describes it, and the header:
 ;
-; lzhw_method		the method, 5 characters: "-lh0-", "-lhd-"
+; lzhw_method		the method, 5 characters: "-lh5-", "-lh0-",
+;			"-lhd-"
 ; lzhw_path		the member's path, "\" between its parts, as it
 ;			is stored: the directories, then the name
 ; lzhw_dir		the directories' length, each with its "\": 0
 ;			for none
 ; lzhw_length		the whole path's length, a word
 ; lzhw_size		the data's size, 4 bytes
+; lzhw_packed		its packed size, 4 bytes: lzhw_size's, stored
 ; lzhw_crc		the data's CRC-16
 ; lzhw_date		MS-DOS's time word, then its date word
 ; lzhw_attr		the MS-DOS attributes
@@ -412,6 +415,7 @@ lzhw_path:	defs	144
 lzhw_dir:	defs	1
 lzhw_length:	defs	2
 lzhw_size:	defs	4
+lzhw_packed:	defs	4
 lzhw_crc:	defs	2
 lzhw_date:	defs	4
 lzhw_attr:	defs	1
