@@ -14,7 +14,8 @@
 ; makes LZH's, zipw.as ZIP's). A ZIP archive ends with its central
 ; directory, kept in mapper segments until then. A directory found is
 ; added whole: a -lhd- member, then everything in it, at every depth
-; (add_tree). The archive itself, if a name matches it, is passed over.
+; (add_tree). The archive itself, if a name matches it, is passed over,
+; and so is a path added already in this run (path_check).
 ; An archive nothing was added to is deleted. Any MSX-DOS error stops,
 ; the archive deleted.
 
@@ -23,6 +24,7 @@
 		include	lzhw.inc	; lzhw.as: the member's header
 		include	zipw.inc	; zipw.as: ZIP's headers
 		include	progress.inc	; progress.as: the progress line
+		include	seglist.inc	; seglist.as: lists in the mapper
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .NOFIL...
@@ -428,7 +430,8 @@ add_word.refused:
 ; add_entry - add the entry just found.
 ;
 ;   "." and "..", and the archive itself, are passed over without a
-;   line; a directory is added whole (add_tree). A file is opened
+;   line; a directory is added whole (add_tree). A file added already in
+;   this run says so, and is not added again. A file is opened
 ;   through its FIB; its header is written as far as it is known (the
 ;   CRC still 0), then its data, COPY_SIZE bytes at a time, the CRC
 ;   computed and the bytes counted on the way; then the header again,
@@ -468,6 +471,8 @@ add_entry.same:
 		ret			; it is: passed over
 add_entry.file:
 		call	entry_path	; lzhw_path, lzhw_length
+		call	path_check	; CY: added already
+		jp	c,already
 		call	entry_details	; the size, for the line and for now
 		ld	hl,method_lh0	; stored
 		ld	de,lzhw_method
@@ -585,6 +590,11 @@ add_tree:
 		push	af
 		ld	a,l		; all of it directories now
 		ld	(lzhw_dir),a
+		call	path_check	; CY: added already
+		jr	nc,add_tree.new
+		call	already		; but what is in it may not be
+		jr	add_tree.inside
+add_tree.new:
 		call	entry_details
 		ld	hl,method_lhd
 		ld	de,lzhw_method
@@ -598,6 +608,7 @@ add_tree:
 		ld	hl,(added)
 		inc	hl
 		ld	(added),hl
+add_tree.inside:
 		call	fib_push	; HL -> the directory's FIB, kept
 		ex	de,hl
 		ld	hl,no_name	; everything in it
@@ -693,8 +704,7 @@ member_header:
 
 ; keep_member - ZIP: the member's central record, kept for the end.
 ;
-;   None is left in the mapper: the line is ended, KAGO says so, and
-;   stops, the archive deleted (fail, with no MSX-DOS error).
+;   None is left in the mapper: KAGO stops (no_memory).
 ;
 ; Input:	out_format; lzhw.as's variables; zipw_crc, zipw_at
 ; Output:	returns only if it was kept, or for LZH
@@ -710,6 +720,141 @@ keep_member:
 		ret	z		; LZH: nothing to keep
 		call	zipw_keep	; CY: no room
 		ret	nc
+		jp	no_memory
+
+; path_check - whether the member's path was added already in this run;
+;   if not, it is kept, so that it will be.
+;
+;   The paths added are kept in path_list, a list of records in mapper
+;   segments (seglist.as), each its length, then the path. All of them
+;   come from MSX-DOS2's names and the word's directories, folded to
+;   upper case, with "\" between parts, so they are compared byte for
+;   byte. A file named twice, by two words or by a word and a directory
+;   above it, is added once.
+;
+; Input:	lzhw_path, lzhw_length
+; Output:	CY set = it was added already: nothing kept
+;		returns only if it could be kept (no_memory)
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+path_check:
+		call	path_seen	; CY: added already
+		ret	c
+		ld	a,(lzhw_length)	; the record: the length, the path
+		ld	(path_record),a
+		ld	c,a
+		ld	b,0
+		ld	hl,lzhw_path
+		ld	de,path_record+1
+		ldir
+		ld	a,(lzhw_length)
+		inc	a
+		ld	c,a
+		ld	de,path_list
+		ld	hl,path_record
+		call	seglist_add	; CY: no room
+		jp	c,no_memory
+		ret			; CY clear
+
+; path_seen - whether the member's path is in path_list.
+;
+;   Each segment, in page 2, is walked record by record: a length that
+;   differs moves on at once. Nothing calls MSX-DOS while a segment is
+;   mapped. A known ceiling: n members take n x n / 2 comparisons; a
+;   hash table is the way on, if an archive ever makes it matter.
+;
+; Input:	lzhw_path, lzhw_length; path_list
+; Output:	CY set = it is
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	seen_seg
+
+path_seen:
+		xor	a
+		ld	(seen_seg),a
+path_seen.segment:
+		ld	de,path_list
+		ld	a,(seen_seg)
+		call	seglist_map	; HL = its start, BC = its length
+		ccf
+		ret	nc		; no more segments: not there
+		push	hl		; DE = its end
+		add	hl,bc
+		ex	de,hl
+		pop	hl
+path_seen.record:
+		or	a		; at the end?
+		sbc	hl,de
+		add	hl,de
+		jr	nc,path_seen.next
+		ld	a,(lzhw_length)	; the same length?
+		cp	(hl)
+		jr	nz,path_seen.skip
+		push	de
+		push	hl
+		inc	hl
+		ld	de,lzhw_path
+		ld	b,a
+path_seen.byte:
+		ld	a,(de)
+		cp	(hl)
+		jr	nz,path_seen.differ
+		inc	hl
+		inc	de
+		djnz	path_seen.byte
+		pop	hl		; the same: there
+		pop	de
+		scf
+		ret
+path_seen.differ:
+		pop	hl
+		pop	de
+path_seen.skip:
+		ld	a,(hl)		; past it: its length, and 1
+		inc	a
+		add	a,l
+		ld	l,a
+		jr	nc,path_seen.record
+		inc	h
+		jr	path_seen.record
+path_seen.next:
+		ld	hl,seen_seg
+		inc	(hl)
+		jr	path_seen.segment
+
+; already - the line for a member added already in this run.
+;
+; Input:	lzhw_path, lzhw_length
+; Output:	"Skipping PATH: added already"
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+already:
+		print	msg_skipping
+		call	print_member
+		print	msg_already
+		ret
+
+; no_memory - stop: the mapper has no room left for a list.
+;
+;   The line is ended, KAGO says so, and stops, the archive deleted
+;   (fail, with no MSX-DOS error).
+;
+; Input:	none
+; Output:	does not return
+; Modifies:	everything
+; Scratch:	none
+
+no_memory:
 		print	msg_crlf
 		print	msg_no_memory
 		xor	a		; no MSX-DOS error
@@ -1114,7 +1259,7 @@ fail_closed:
 ; msg_banner		the name, version, copyright and web address
 ; msg_usage		the rest of the usage, after the banner
 ; msg_no_mapper		heapinit found no mapper support
-; msg_no_memory		no mapper memory left for the central directory
+; msg_no_memory		no mapper memory left for a list
 ; msg_no_format, msg_bad_format, msg_no_pma
 ;			archive_format's refusals
 ; format_table		the formats' names: three letters, then the
@@ -1122,7 +1267,8 @@ fail_closed:
 ; msg_exists		after the archive's name, when it exists
 ; msg_nothing, msg_not_written
 ;			around the archive's name, when nothing was added
-; msg_adding, msg_ok, msg_skipping, msg_colon, msg_crlf, msg_dotdot
+; msg_adding, msg_ok, msg_skipping, msg_colon, msg_crlf, msg_dotdot,
+; msg_already
 ;			adding's words, put together per member
 ; method_lh0, method_lhd	the methods: stored, a directory
 ; no_name, end_mark	a 0 byte: the empty name, for "everything in
@@ -1169,9 +1315,8 @@ msg_bad_format:
 		defb	CHR_CR,CHR_LF,"$"
 msg_no_mapper:	defb	"KAGO needs MSX-DOS2's mapper support."
 		defb	CHR_CR,CHR_LF,"$"
-msg_no_memory:
-		defb	"Not enough mapper memory for the ZIP central"
-		defb	" directory.",CHR_CR,CHR_LF,"$"
+msg_no_memory:	defb	"Not enough mapper memory left."
+		defb	CHR_CR,CHR_LF,"$"
 msg_no_pma:
 		defb	"Writing PMA archives is not supported yet."
 		defb	CHR_CR,CHR_LF,"$"
@@ -1188,6 +1333,7 @@ msg_colon:	defb	": $"
 msg_crlf:	defb	CHR_CR,CHR_LF,"$"
 msg_dotdot:	defb	": a path with .. cannot be stored"
 		defb	CHR_CR,CHR_LF,"$"
+msg_already:	defb	": added already",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
 method_lhd:	defb	"-lhd-"
 no_name:
@@ -1214,12 +1360,16 @@ end_mark:	defb	0
 ;			word_dirs: where the word's directories start
 ;			and end, and where the part being read starts
 ; depth			add_tree: how many directories deep
+; path_list		the paths added: a list, seglist.as's
+; seen_seg		path_seen: the segment being walked
 ; copy_buffer		the data, COPY_SIZE bytes at a time, in the
 ;			buffers segment, which the program file does not
 ;			carry
 ; fib_stack		add_tree: each directory's FIB, kept while what
 ;			is in it is added; MAX_DEPTH of 64 bytes, in the
 ;			buffers segment
+; path_record		path_check: a path's record, its length and the
+;			path, in the buffers segment
 ;
 archive_name:	defs	128
 out_format:	defs	1
@@ -1238,10 +1388,13 @@ dirs_from:	defs	2
 dirs_end:	defs	2
 part_from:	defs	2
 depth:	defs	1
+path_list:	defs	LIST_SIZE
+seen_seg:	defs	1
 
 		dseg	buffers
 copy_buffer:	defs	COPY_SIZE
 fib_stack:	defs	MAX_DEPTH*64
+path_record:	defs	145
 
 		end	main
 

@@ -301,13 +301,13 @@ rem KAGO ARCHIVING runs in TESTS\OUT. UNKAGO extracts KIN.LZH into
 rem KIN, which gives its files and directories fixed dates and
 rem attributes; KAGO archives the tree into K1.LZH, which UNKAGO lists,
 rem then extracts into KOUT for the Mac to compare. Then the refusals, a
-rem format the switch chooses, a directory named, and an archive among
-rem the files it is made of. The same tree goes into Z1.ZIP, which
-rem UNKAGO lists and extracts into ZOUT, and KIN\SUB into Z2.DAT, ZIP by
-rem the switch. KAGO never replaces an archive, so its archives are
-rem deleted first. RO.TXT is left read-only, so it is made writable
-rem first, for /O to replace it. What KOUT\KIN and ZOUT\KIN hold goes
-rem into TESTS\DATES.TXT.
+rem format the switch chooses, a directory named, files named twice, and
+rem an archive among the files it is made of. The same tree goes into
+rem Z1.ZIP, which UNKAGO lists and extracts into ZOUT, and KIN\SUB into
+rem Z2.DAT, ZIP by the switch. KAGO never replaces an archive, so its
+rem archives are deleted first. RO.TXT is left read-only, so it is made
+rem writable first, for /O to replace it. What KOUT\KIN and ZOUT\KIN
+rem hold goes into TESTS\DATES.TXT.
 echo === KAGO ARCHIVING>>tests\results.txt
 attrib -r tests\out\kin\ro.txt
 attrib -r tests\out\kout\kin\ro.txt
@@ -316,6 +316,7 @@ cd tests\out
 del k1.lzh
 del k2.dat
 del k3.lzh
+del k4.lzh
 del z1.zip
 del z2.dat
 echo --- unkago /O /D:kin ..\kago\kin.lzh>>..\results.txt
@@ -360,6 +361,10 @@ echo --- kago k3.lzh kin\sub>>..\results.txt
 ..\..\build\kago k3.lzh kin\sub>>..\results.txt
 echo --- unkago /L k3.lzh>>..\results.txt
 ..\..\build\unkago /L k3.lzh>>..\results.txt
+echo --- kago k4.lzh kin\a.txt kin\*.txt kin\sub\ kin\sub>>..\results.txt
+..\..\build\kago k4.lzh kin\a.txt kin\*.txt kin\sub\ kin\sub>>..\results.txt
+echo --- unkago /L k4.lzh>>..\results.txt
+..\..\build\unkago /L k4.lzh>>..\results.txt
 echo --- kago kout\kin\self.lzh kout\kin\*.*>>..\results.txt
 ..\..\build\kago kout\kin\self.lzh kout\kin\*.*>>..\results.txt
 echo --- unkago /L kout\kin\self.lzh>>..\results.txt

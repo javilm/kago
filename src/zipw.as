@@ -10,12 +10,11 @@
 ; each member in lzhw.as's variables, as for LZH, with zipw_crc for its
 ; CRC-32 and zipw_at for where its local header is.
 ;
-; The central directory is kept until the end in whole mapper segments
-; taken with segalloc (MapperHeap), its records one after the other; a
-; record that would cross a segment's end starts the next one. At the
-; end zipw_copy hands it out, to be written after the last member.
-; Nothing here calls MSX-DOS while a segment is mapped in page 2: each
-; record is made in zipw_buffer first, then copied.
+; The central directory is kept until the end in central_list, a list
+; of records in mapper segments (seglist.as). At the end zipw_copy hands
+; it out, to be written after the last member. Nothing here calls MSX-DOS
+; while a segment is mapped in page 2: each record is made in
+; zipw_buffer first, then added.
 ;
 ; Every member is stored (method 0). The system it was made on is
 ; MS-DOS, so the external attributes' low byte is MS-DOS's attributes.
@@ -30,12 +29,10 @@
 		public	zipw_crc
 		public	zipw_at
 
-		include	common.inc	; kanji_lead; MapperHeap's segalloc,
-					;   deref
+		include	common.inc	; kanji_lead
 		include	lzhw.inc	; the member: lzhw_path ... lzhw_attr
+		include	seglist.inc	; seglist_add, seglist_map
 
-ZIP_SEGS	equ	32		; at most 512 KB of central directory
-SEG_SIZE	equ	4000h		; a segment, 16 KB
 PATH_SEPARATOR	equ	5Ch		; "\" in lzhw_path
 
 		cseg
@@ -72,8 +69,7 @@ zipw_local:
 ;   "PK" 1 2, made on MS-DOS by version 2.0, zipw_fields' 26 bytes, no
 ;   comment, disk 0, no internal attributes, the external ones (MS-DOS's
 ;   in the low byte), where the local header is, then the name: made in
-;   zipw_buffer, then copied to the end of the last segment, or into a
-;   new one if it does not fit.
+;   zipw_buffer, then added to central_list.
 ;
 ; Input:	lzhw.as's variables, zipw_crc, zipw_at
 ; Output:	CY set = no mapper memory left for it
@@ -121,53 +117,12 @@ zipw_keep.zero:
 		or	a
 		sbc	hl,de
 		ld	(record_length),hl
-		ld	a,(zipw_segs)	; room in the last segment?
-		or	a
-		jr	z,zipw_keep.new	; none yet
-		ld	de,(zipw_top)
-		add	hl,de
-		ld	de,SEG_SIZE+1
-		or	a
-		sbc	hl,de
-		jr	c,zipw_keep.room
-zipw_keep.new:
-		ld	a,(zipw_segs)
-		cp	ZIP_SEGS
-		scf
-		ret	z		; the table is full: CY
-		call	seg_fp
-		call	segalloc	; CY: no segment free
-		ret	c
-		ld	hl,zipw_segs
-		inc	(hl)
-		ld	hl,0
-		ld	(zipw_top),hl
-zipw_keep.room:
-		ld	a,(zipw_segs)	; the last segment, in page 2
-		dec	a
-		call	seg_fp
-		call	deref		; HL = 8000h
-		ld	de,(zipw_top)
-		add	hl,de
-		ex	de,hl		; DE -> where the record goes
+		ld	b,h
+		ld	c,l
+		ld	de,central_list
 		ld	hl,zipw_buffer
-		ld	bc,(record_length)
-		ldir
-		ld	hl,(zipw_top)	; the segment's length now
-		ld	bc,(record_length)
-		add	hl,bc
-		ld	(zipw_top),hl
-		ld	a,(zipw_segs)
-		dec	a
-		add	a,a
-		ld	e,a
-		ld	d,0
-		ld	hl,zipw_used
-		add	hl,de
-		ld	bc,(zipw_top)
-		ld	(hl),c
-		inc	hl
-		ld	(hl),b
+		call	seglist_add	; CY: no room
+		ret	c
 		ld	hl,(zipw_count)
 		inc	hl
 		ld	(zipw_count),hl
@@ -186,7 +141,7 @@ zipw_keep.room:
 ;
 ;   copy_seg and copy_pos say how far it has got: each call copies from
 ;   there, up to the end of that segment's records or BC bytes, whichever
-;   comes first.
+;   comes first, while the segment is in page 2.
 ;
 ; Input:	DE -> where it goes
 ;		BC = how much room there is, 1 or more
@@ -195,48 +150,43 @@ zipw_keep.room:
 ;		BC
 ;		DE
 ;		HL
-; Scratch:	none
+; Scratch:	copy_to
+;		copy_room
 
 zipw_copy:
+		ld	(copy_to),de
+		ld	(copy_room),bc
+zipw_copy.segment:
+		ld	de,central_list
 		ld	a,(copy_seg)
-		ld	hl,zipw_segs
-		cp	(hl)
-		jr	nc,zipw_copy.none	; past the last segment
-		push	de
-		add	a,a		; what is left in it: its length
-		ld	l,a		;   less copy_pos
-		ld	h,0
-		ld	de,zipw_used
-		add	hl,de
-		ld	a,(hl)
-		inc	hl
-		ld	h,(hl)
-		ld	l,a
+		call	seglist_map	; HL = its start, BC = its length
+		jr	c,zipw_copy.none	; past the last segment
+		push	hl
+		ld	h,b		; what is left in it
+		ld	l,c
 		ld	de,(copy_pos)
 		or	a
 		sbc	hl,de
-		pop	de
 		jr	nz,zipw_copy.some
-		ld	hl,copy_seg	; none: on to the next segment
+		pop	hl		; none: on to the next segment
+		ld	hl,copy_seg
 		inc	(hl)
 		ld	hl,0
 		ld	(copy_pos),hl
-		jr	zipw_copy
+		jr	zipw_copy.segment
 zipw_copy.some:
-		or	a		; BC = the room, or what is left
+		ld	bc,(copy_room)	; BC = the room, or what is left
+		or	a
 		sbc	hl,bc
 		add	hl,bc
 		jr	nc,zipw_copy.sized
 		ld	b,h
 		ld	c,l
 zipw_copy.sized:
-		push	de
-		ld	a,(copy_seg)
-		call	seg_fp
-		call	deref		; HL = 8000h; BC kept
+		pop	hl		; HL -> where it got to
 		ld	de,(copy_pos)
 		add	hl,de
-		pop	de
+		ld	de,(copy_to)
 		push	bc
 		ldir
 		pop	bc
@@ -391,24 +341,6 @@ copy_name.pair:
 		inc	hl
 		jr	copy_name.put
 
-; seg_fp - where segment A's far pointer is kept.
-;
-; Input:	A = the segment, 0 to ZIP_SEGS - 1
-; Output:	HL -> zipw_fp + 4 x A
-; Modifies:	AF
-;		DE
-;		HL
-; Scratch:	none
-
-seg_fp:
-		add	a,a
-		add	a,a
-		ld	e,a
-		ld	d,0
-		ld	hl,zipw_fp
-		add	hl,de
-		ret
-
 ; Constants for the routines above:
 ;
 ; local_sig, central_sig, end_sig
@@ -429,25 +361,22 @@ end_sig:	defb	"PK",5,6
 ;			most 140: under 200
 ; zipw_count		the records kept
 ; zipw_size		their bytes, 4
-; zipw_segs		the segments taken
-; zipw_top		the last one's length
-; zipw_fp		each segment's far pointer, 4 bytes
-; zipw_used		each segment's length, a word
+; central_list		the central records: a list, seglist.as's
 ; record_length		zipw_keep: the record's length
 ; copy_seg, copy_pos	zipw_copy: how far it has got
+; copy_to, copy_room	zipw_copy: where to, and how much room
 ;
 zipw_crc:	defs	4
 zipw_at:	defs	4
 zipw_buffer:	defs	200
 zipw_count:	defs	2
 zipw_size:	defs	4
-zipw_segs:	defs	1
-zipw_top:	defs	2
-zipw_fp:	defs	ZIP_SEGS*4
-zipw_used:	defs	ZIP_SEGS*2
+central_list:	defs	LIST_SIZE
 record_length:	defs	2
 copy_seg:	defs	1
 copy_pos:	defs	2
+copy_to:	defs	2
+copy_room:	defs	2
 
 		end
 

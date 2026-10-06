@@ -702,6 +702,29 @@ Adding KIN\SUB\DEEP\ OK
          0          0 -lhd-  2026-10-07 10:00 KIN\SUB\DEEP\
 ---------- ---------- ------                  ------------
         13         13        3 files
+--- kago k4.lzh kin\a.txt kin\*.txt kin\sub\ kin\sub
+Adding KIN\A.TXT OK
+Skipping KIN\A.TXT: added already
+Adding KIN\RO.TXT OK
+Adding KIN\HID.TXT OK
+Adding KIN\A$B.TXT OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
+Adding KIN\SUB\ OK
+Skipping KIN\SUB\IN.TXT: added already
+Skipping KIN\SUB\DEEP\: added already
+--- unkago /L k4.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        18         18 -lh0-  2001-02-03 04:05 KIN\A.TXT
+        12         12 -lh0-  2100-03-01 00:00 KIN\RO.TXT
+         9          9 -lh0-  2106-02-07 06:28 KIN\HID.TXT
+        23         23 -lh0-  2099-12-31 23:59 KIN\A$B.TXT
+        13         13 -lh0-  2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\DEEP\
+         0          0 -lhd-  2026-10-07 10:00 KIN\SUB\
+---------- ---------- ------                  ------------
+        75         75        7 files
 --- kago kout\kin\self.lzh kout\kin\*.*
 Adding KOUT\KIN\A.TXT OK
 Adding KOUT\KIN\BIG.DAT OK
