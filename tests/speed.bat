@@ -1,7 +1,9 @@
 rem SPEED.BAT - how long UNKAGO takes to extract LONG.LZH (84000 bytes
 rem of -lh5- data), LONG7.LZH (76620 of -lh7-) and ZLONG.ZIP (80331 of
-rem deflate): the same 1241658 bytes out. Run it from repo\, after
-rem BUILD.
+rem deflate): the same 1241658 bytes out. Then how long KAGO takes to
+rem pack GPL-2 (18092 bytes of text, from the UNKAGO tests),
+rem BUILD\UNKAGO.COM and KIN\BIG.DAT (70000 bytes), each into its own
+rem archive. Run it from repo\, after BUILD and TESTS.
 rem TIME, before and after, goes to TESTS\SPEED.TXT, which is read on the
 rem Mac. TESTS\ENTER.TXT answers TIME's question with Enter, which
 rem keeps the clock as it is. The file lands in TESTS\OUT\SPEED.
@@ -11,5 +13,15 @@ time<tests\enter.txt>>tests\speed.txt
 build\unkago /O /Q /D:tests\out\speed tests\unkago\long7.lzh>>tests\speed.txt
 time<tests\enter.txt>>tests\speed.txt
 build\unkago /O /Q /D:tests\out\speed tests\unkago\zlong.zip>>tests\speed.txt
+time<tests\enter.txt>>tests\speed.txt
+del tests\out\speed\kgpl.lzh
+del tests\out\speed\kcom.lzh
+del tests\out\speed\kbig.lzh
+time<tests\enter.txt>>tests\speed.txt
+build\kago /Q tests\out\speed\kgpl.lzh tests\out\gpl-2>>tests\speed.txt
+time<tests\enter.txt>>tests\speed.txt
+build\kago /Q tests\out\speed\kcom.lzh build\unkago.com>>tests\speed.txt
+time<tests\enter.txt>>tests\speed.txt
+build\kago /Q tests\out\speed\kbig.lzh tests\out\kin\big.dat>>tests\speed.txt
 time<tests\enter.txt>>tests\speed.txt
 

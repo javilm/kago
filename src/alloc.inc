@@ -28,6 +28,11 @@
 					;   in:  HL -> 4-byte result buffer
 					;   out: CY set = no free segment
 					;        else slot, segment, offset 0
+	extrn	p2seg		; a primary mapper segment in page 2,
+					;   directly (added for Tsuzura)
+					;   in:  A = the segment
+	extrn	primslt		; A BYTE, not a routine: the primary
+					;   mapper's slot address
 	extrn	hblocks		; A WORD, not a routine: blocks handed
 					;   out by halloc and not yet given back
 					;   to hfree. The library never reads it;

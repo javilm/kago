@@ -16,6 +16,8 @@
 ;	maptot		total mapper RAM, in 16K segments
 ;	mapfree		free mapper RAM, in 16K segments (added for Tsuzura)
 ;	segalloc	allocate a whole 16K segment (added for Tsuzura)
+;	p2seg		put a primary mapper segment in page 2 (Tsuzura)
+;	primslt		(a byte) the primary mapper's slot address
 ;	hblocks		(a word) blocks handed out and not yet given back
 ;
 ; THE RULE: page 2 belongs to MSX-DOS whenever MSX-DOS runs. Call p2restore
@@ -30,6 +32,8 @@
 		public	maptot
 		public	mapfree
 		public	segalloc
+		public	p2seg
+		public	primslt
 		public	hblocks
 
 		include	farptr.inc	; far-pointer macros + NULLOFF
@@ -351,6 +355,24 @@ p2restore:	ld	a,(mapready)	; before heapinit there is nothing to do
 		xor	a
 		ld	(curvalid),a	; force the next deref to remap
 		ret
+
+; p2seg - put a segment of the primary mapper in page 2, directly. Added
+; for Tsuzura (note 027).
+;
+; For code that switches page 2 often between whole segments of its own:
+; no far pointer and no cache check, a third of deref's time. Page 2
+; must show the primary mapper's slot already (after p2restore, or after
+; a deref of a segment there): only the segment changes. deref's cache is
+; marked invalid, so that the next deref maps in full.
+;
+; Input:	A = the segment
+; Modifies:	AF
+
+p2seg:		push	af
+		xor	a
+		ld	(curvalid),a	; deref: page 2 unknown now
+		pop	af
+		jp	PUT_P2		; segment via DOS2 (keeps its record)
 
 ; ======================================================================
 ; Heap layer

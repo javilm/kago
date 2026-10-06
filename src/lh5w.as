@@ -122,6 +122,7 @@ TABLES_SIZE	equ	15327
 ; Scratch:	none
 
 lh5w_start:
+		call	forget		; page 2: KAGO's until now
 		ld	(limit),hl
 		ld	(limit+2),de
 		ld	hl,0
@@ -162,9 +163,23 @@ lh5w_start:
 		ret	c
 		ld	a,1
 		ld	(tables_ready),a
+		ld	a,(primslt)	; all three in the primary
+		ld	hl,text_fp	;   mapper: p2seg can switch
+		cp	(hl)		;   between them
+		jr	nz,lh5w_start.slow
+		ld	hl,prev_fp
+		cp	(hl)
+		jr	nz,lh5w_start.slow
+		ld	hl,tables_fp
+		cp	(hl)
+		jr	nz,lh5w_start.slow
+		ld	a,1
+		ld	(fast),a
+lh5w_start.slow:
 		ld	hl,C_SYMS	; c's tree: C_SYMS symbols, and
 		ld	(c_n),hl	;   where its arrays are
-		call	map_tables	; DE -> the block, in page 2
+		derefp	tables_fp	; DE -> the block, in page 2
+		ex	de,hl
 		ld	hl,offsets
 		ld	ix,c_freq_at
 		ld	b,9
@@ -216,6 +231,7 @@ lh5w_start.ready:
 ; Scratch:	none
 
 lh5w_data:
+		call	forget		; page 2: KAGO's until now
 		ld	(src_at),de
 		ld	(src_n),bc
 lh5w_data.more:
@@ -268,6 +284,7 @@ lh5w_data.done:
 ; Scratch:	none
 
 lh5w_end:
+		call	forget		; page 2: KAGO's until now
 		ld	a,1
 		ld	(eof),a
 		call	rounds
@@ -468,27 +485,60 @@ round.room:
 round.counted:
 		ld	(r_nq),hl
 		call	map_text	; the hashes
-		ld	hl,(r_first)
-		call	ring_addr
-		ld	de,qh
-		ld	bc,(r_nq)
-round.hash:
-		ld	a,b
-		or	c
+		ld	hl,(r_nq)
+		ld	a,h
+		or	l
 		jr	z,round.hashed
-		push	bc
-		call	hash3		; BC = twice the hash
-		ex	de,hl
-		ld	(hl),c
-		inc	hl
-		ld	(hl),b
-		inc	hl
-		ex	de,hl
+		ld	a,l		; B' = how many (256 is 0)
+		exx
+		ld	b,a
+		ld	hl,qh		; HL' -> where they go
+		exx
+		ld	hl,(r_first)	; C, D, E: the first three bytes
+		call	ring_addr
+		ld	c,(hl)
 		inc	hl
 		res	6,h
-		pop	bc
-		dec	bc
-		jr	round.hash
+		ld	d,(hl)
+		inc	hl
+		res	6,h
+		ld	e,(hl)
+		inc	hl
+		res	6,h
+round.hash:
+		ld	a,d		; ((C << 8) ^ (D << 4) ^ E) & 7FFh,
+		rrca			;   doubled, into qh
+		rrca
+		rrca
+		rrca
+		ld	b,a		; D's nibbles swapped
+		and	0Fh
+		xor	c
+		and	7
+		ld	c,a		; C = its high byte
+		ld	a,b
+		and	0F0h
+		xor	e
+		add	a,a
+		rl	c
+		exx
+		ld	(hl),a
+		inc	hl
+		exx
+		ld	a,c
+		exx
+		ld	(hl),a
+		inc	hl
+		exx
+		ld	c,d		; the next position's bytes
+		ld	d,e
+		ld	e,(hl)
+		inc	hl
+		res	6,h
+		exx
+		dec	b
+		exx
+		jr	nz,round.hash
 round.hashed:
 		call	map_tables	; the last symbol; head
 		call	out_pending
@@ -526,20 +576,92 @@ round.headed:
 		xor	a
 		ld	(n_b),a
 		ld	(n_a),a
+		ld	hl,(r_nq)	; first those only put in:
+		ld	de,(r_ins)	;   r_ins of them, or nq
+		push	hl
+		or	a
+		sbc	hl,de
+		pop	hl
+		jr	c,round.plain
+		ex	de,hl
+round.plain:
+		ld	b,h		; BC = how many
+		ld	c,l
 		ld	hl,qh
 		ld	de,(r_first)
-		ld	bc,(r_nq)
 round.prev:
 		ld	a,b
 		or	c
-		jr	z,round.compare
+		jr	z,round.searches
 		push	bc
-		ld	c,(hl)		; BC = the position head held
+		call	prev_put	; prev[DE] = (HL), and on
+		pop	bc
+		dec	bc
+		jr	round.prev
+round.searches:
+		ld	bc,(r_nq)	; then B's and A's, if they are
+		ld	a,(r_b)		;   3 bytes from the end or more
+		or	a
+		jr	z,round.prev_a
+		ld	hl,(s_b)
+		ld	(w_s),hl
+		call	round.chain
+		jr	c,round.compare
+		ld	ix,list_b
+		call	walk
+		ld	(n_b),a
+		ld	bc,(r_nq)
+round.prev_a:
+		ld	hl,(s_a)
+		ld	(w_s),hl
+		call	round.chain
+		jr	c,round.compare
+		ld	ix,list_a
+		call	walk
+		ld	(n_a),a
+		jr	round.compare
+round.chain:
+		ld	hl,(w_s)	; past nq: no chain (CY set)
+		ld	de,(r_first)
+		or	a
+		sbc	hl,de
+		push	hl
+		or	a
+		sbc	hl,bc
+		pop	hl
+		ccf
+		ret	c
+		add	hl,hl		; its old position, from qh
+		ld	de,qh
+		add	hl,de
+		ld	de,(w_s)
+		call	prev_put	; prev[s] = it
+		dec	hl
+		ld	d,(hl)
+		dec	hl
+		ld	e,(hl)		; DE = it: walk's start
+		or	a
+		ret
+
+; prev_put - a position's prev: the position head held before it.
+;
+; Input:	DE = the position
+;		HL -> its old position, in qh
+;		prev mapped
+; Output:	prev[DE] written; HL -> the next in qh; DE + 1
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+prev_put:
+		ld	c,(hl)
 		inc	hl
 		ld	b,(hl)
 		inc	hl
 		push	hl
-		ld	h,d		; prev[pos] = it
+		ld	h,d
 		ld	l,e
 		add	hl,hl
 		ld	a,h
@@ -549,38 +671,8 @@ round.prev:
 		ld	(hl),c
 		inc	hl
 		ld	(hl),b
-		ld	hl,(s_a)	; A's position: its chain
-		or	a
-		sbc	hl,de
-		jr	z,round.walk_a
-		ld	a,(r_b)		; B's, if there is a B
-		or	a
-		jr	z,round.prev_next
-		ld	hl,(s_b)
-		or	a
-		sbc	hl,de
-		jr	nz,round.prev_next
-		ld	ix,list_b
-		call	round.walk
-		ld	(n_b),a
-		jr	round.prev_next
-round.walk_a:
-		ld	ix,list_a
-		call	round.walk
-		ld	(n_a),a
-round.prev_next:
 		pop	hl
-		pop	bc
-		dec	bc
 		inc	de
-		jr	round.prev
-round.walk:
-		push	de		; walk's chain from BC, for DE
-		ld	(w_s),de
-		ld	d,b
-		ld	e,c
-		call	walk
-		pop	de
 		ret
 round.compare:
 		call	map_text	; the matches
@@ -724,27 +816,30 @@ hash3:
 		pop	hl
 		ret
 
-; walk - a search's chain: the distances to compare.
+; walk - a search's chain: the positions to compare.
 ;
 ;   From the position head held, back along prev, while each is further
 ;   back than the one before, no further than the window allows (8192,
-;   or the member's start), and CHAIN at most. The list starts after a
-;   0 word: the distance before the first.
+;   or the member's start), and CHAIN at most. With d = s - c, both
+;   limits are one test: x = wlim - d must be under span, which starts at
+;   wlim and becomes x each time; a d too far back, or not further than
+;   the last, makes x too big (16-bit, it wraps). B' counts down.
 ;
 ; Input:	DE = the position head held
 ;		w_s = the search's position
 ;		IX -> the list
 ;		big; prev mapped
-; Output:	A = how many distances in the list
+; Output:	A = how many positions in the list
 ; Modifies:	AF
 ;		BC
 ;		DE
 ;		HL
 ;		IX
+;		B'
 ; Scratch:	none
 
 walk:
-		ld	hl,WINDOW	; the furthest: 8192, or the start
+		ld	hl,WINDOW	; wlim: 8192, or the start
 		ld	a,(big)
 		or	a
 		jr	nz,walk.limit
@@ -756,31 +851,34 @@ walk:
 		jr	nc,walk.limit
 		ld	hl,(w_s)
 walk.limit:
-		ld	(wlim),hl
-		ld	a,CHAIN
-		ld	(w_n),a
-		ld	bc,(w_s)	; BC = s
-walk.next:
-		ld	h,b		; d = s - c
-		ld	l,c
+		ld	b,h		; BC = span: wlim
+		ld	c,l
+		push	de		; x = c + (wlim - s)
+		ld	de,(w_s)
 		or	a
 		sbc	hl,de
-		ld	a,(ix-2)	; no further back than the last:
-		sub	l		;   stop
-		ld	a,(ix-1)
-		sbc	a,h
+		ld	(w_neg),hl
+		pop	de
+		exx
+		ld	b,CHAIN
+		exx
+walk.next:
+		ld	hl,(w_neg)	; x
+		add	hl,de
+		ld	a,l		; under span, or stop
+		sub	c
+		ld	a,h
+		sbc	a,b
 		jr	nc,walk.done
-		ld	a,(wlim)	; past the limit: stop
-		sub	l
-		ld	a,(wlim+1)
-		sbc	a,h
-		jr	c,walk.done
-		ld	(ix+0),l
-		ld	(ix+1),h
+		ld	b,h		; span = x
+		ld	c,l
+		ld	(ix+0),e
+		ld	(ix+1),d
 		inc	ix
 		inc	ix
-		ld	hl,w_n
-		dec	(hl)
+		exx			; CHAIN of them: stop
+		dec	b
+		exx
 		jr	z,walk.done
 		ex	de,hl		; c = prev[c]
 		add	hl,hl
@@ -793,18 +891,19 @@ walk.next:
 		ld	d,(hl)
 		jr	walk.next
 walk.done:
-		ld	a,(w_n)		; CHAIN less those not taken
-		ld	b,a
+		exx			; CHAIN less those left
 		ld	a,CHAIN
 		sub	b
+		exx
 		ret
 
 ; search - the longest match at a position, from its list.
 ;
 ;   It must be longer than min (2 at least) and is at most 256, or what
-;   is left of the member. Each distance's byte at the best length so
+;   is left of the member. Each position's byte at the best length so
 ;   far is looked at first, as LHA does: a longer match must have it.
-;   A match as long as it can be ends the search.
+;   A match as long as it can be ends the search. B' counts the
+;   positions left.
 ;
 ; Input:	HL = min
 ;		w_s = the position
@@ -817,7 +916,7 @@ walk.done:
 ;		BC
 ;		DE
 ;		HL
-;		IX
+;		B'
 ; Scratch:	none
 
 search:
@@ -832,7 +931,9 @@ search.min:
 		ld	(best_len),hl
 		ld	hl,0
 		ld	(best_d),hl
-		ld	a,b
+		ld	a,b		; none to try
+		or	a
+		ret	z
 		ld	(s_n),a
 		ld	hl,(top)	; mx: 256, or what is left
 		ld	de,(w_s)
@@ -847,12 +948,12 @@ search.min:
 		ex	de,hl
 search.mx:
 		ld	(mx),hl
-		ld	a,(s_n)		; none to try
-		or	a
-		ret	z
 		ld	hl,(w_s)	; s's byte
 		call	ring_addr
 		ld	(s_at),hl
+		push	ix
+		pop	hl
+		ld	(s_list),hl
 search.aim:
 		ld	hl,(best_len)	; as long as it can be already
 		ld	de,(mx)
@@ -860,36 +961,49 @@ search.aim:
 		sbc	hl,de
 		ret	nc
 		ld	hl,(w_s)	; s's byte at the best length
-		ld	de,(best_len)
-		add	hl,de
+		ld	bc,(best_len)
+		add	hl,bc
 		call	ring_addr
-		ld	(s_at_l),hl
 		ld	a,(hl)
 		ld	(s_byte),a
+		ld	a,(s_n)
+		exx
+		ld	b,a
+		exx
+		ld	hl,(s_list)
 search.next:
-		ld	e,(ix+0)	; the next distance
-		ld	d,(ix+1)
-		inc	ix
-		inc	ix
-		ld	hl,(s_at_l)	; its byte at the best length
-		or	a
-		sbc	hl,de
+		ld	e,(hl)		; DE = the next position
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		push	hl
+		ld	h,d		; its byte at the best length
+		ld	l,e
+		add	hl,bc
 		ld	a,h
 		and	3Fh
 		or	80h
 		ld	h,a
 		ld	a,(s_byte)
 		cp	(hl)
-		jr	nz,search.skip
-		ld	(s_d),de	; the same: compare from the start
-		ld	hl,(s_at)
-		or	a
-		sbc	hl,de
-		ld	a,h
-		and	3Fh
-		or	80h
-		ld	d,a
-		ld	e,l
+		pop	hl
+		jr	z,search.same
+		exx
+		dec	b
+		exx
+		jr	nz,search.next
+		ret
+search.same:
+		ld	(s_list),hl	; the same: compare from the start
+		exx
+		ld	a,b
+		exx
+		dec	a
+		ld	(s_n),a
+		ld	(s_c),de
+		ex	de,hl
+		call	ring_addr
+		ex	de,hl
 		ld	hl,(s_at)
 		ld	a,(mx)		; 256 is 0: 256 times
 		ld	b,a
@@ -915,20 +1029,28 @@ search.length:
 		or	a
 		sbc	hl,de
 		pop	hl
-		jr	c,search.skip
-		jr	z,search.skip
+		jr	c,search.on
+		jr	z,search.on
 		ld	(best_len),hl
-		ld	de,(s_d)
-		ld	(best_d),de
-		ld	hl,s_n
-		dec	(hl)
-		jp	nz,search.aim	; too far for jr
-		ret
-search.skip:
-		ld	hl,s_n
-		dec	(hl)
-		jr	nz,search.next
-		ret
+		ld	hl,(w_s)	; its distance: s - c
+		ld	de,(s_c)
+		or	a
+		sbc	hl,de
+		ld	(best_d),hl
+		ld	a,(s_n)		; none left
+		or	a
+		ret	z
+		jp	search.aim	; too far for jr
+search.on:
+		ld	a,(s_n)
+		or	a
+		ret	z
+		exx
+		ld	b,a
+		exx
+		ld	bc,(best_len)
+		ld	hl,(s_list)
+		jp	search.next	; too far for jr
 
 ; out_pending - send the symbol the last round decided, if there is one.
 ;
@@ -1068,16 +1190,21 @@ out_sym.done:
 ; Scratch:	none
 
 bitlen:
-		ld	b,0
-bitlen.next:
+		ld	b,8		; a high byte: 8 + its bits
 		ld	a,h
-		or	l
-		ld	a,b
-		ret	z
-		srl	h
-		rr	l
+		or	a
+		jr	nz,bitlen.byte
+		ld	b,h		; otherwise the low byte's
+		ld	a,l
+bitlen.byte:
+		or	a
+		jr	z,bitlen.done
+		srl	a
 		inc	b
-		jr	bitlen.next
+		jr	bitlen.byte
+bitlen.done:
+		ld	a,b
+		ret
 
 ; send_block - the block: its tables, then its symbols' codes.
 ;
@@ -1273,20 +1400,63 @@ encode_p:
 		ld	b,a
 		jp	putbits
 
-; map_text, map_prev - the text's segment, or prev's, in page 2.
+; map_text, map_prev, map_tables - the text's segment, prev's, or the
+;   tables' block in page 2, if it isn't there already.
 ;
-; Input:	text_fp, prev_fp
-; Output:	mapped, at 8000h
+;   p2cur says which of the three page 2 shows, 0 for none. The first
+;   after forget is mapped with deref; after that, if all three are in
+;   the primary mapper (fast), p2seg switches between them, which only
+;   changes the segment, and costs a third as much (alloc.as, note 027).
+;
+; Input:	text_fp, prev_fp, tables_fp; p2cur, p2fast, fast
+; Output:	mapped
 ; Modifies:	AF
 ;		DE
 ;		HL
 ; Scratch:	none
 
 map_text:
-		derefp	text_fp
-		ret
+		ld	a,1
+		jr	map
 map_prev:
-		derefp	prev_fp
+		ld	a,2
+		jr	map
+map_tables:
+		ld	a,3
+map:
+		ld	hl,p2cur
+		cp	(hl)
+		ret	z		; there already
+		ld	(hl),a
+		add	a,a		; its far pointer: text_fp, prev_fp
+		add	a,a		;   or tables_fp
+		ld	e,a
+		ld	d,0
+		ld	hl,text_fp-4
+		add	hl,de
+		ld	a,(p2fast)
+		or	a
+		jr	z,map.deref
+		inc	hl		; its segment, directly
+		ld	a,(hl)
+		jp	p2seg
+map.deref:
+		call	deref
+		ld	a,(fast)	; page 2 shows the primary mapper's
+		ld	(p2fast),a	;   slot now, if all three are there
+		ret
+
+; forget - page 2's contents unknown: after MSX-DOS, or KAGO.
+;
+; Input:	none
+; Output:	p2cur, p2fast: 0
+; Modifies:	AF
+; Scratch:	none
+
+forget:
+		xor	a
+		ld	(p2cur),a
+		ld	(p2fast),a
 		ret
 
 ; make_tree - a Huffman tree: every symbol's code length and code.
@@ -1707,6 +1877,9 @@ branch.symbol:
 ; Input:	HL = i, 1 to hs
 ;		the heap, hs, mt_freq
 ; Output:	the heap
+;
+;   It works with addresses: dh_p -> heap[i]; heap[2i] is at twice
+;   that less heap_at; dh_end -> heap[hs].
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -1714,64 +1887,93 @@ branch.symbol:
 ; Scratch:	none
 
 downheap:
-		ld	(dh_i),hl
-		call	heap_addr	; k = heap[i], and its count
-		ld	e,(hl)
+		add	hl,hl		; dh_p -> heap[i]
+		ld	de,(heap_at)
+		add	hl,de
+		ld	(dh_p),hl
+		ld	e,(hl)		; k, and its count
 		inc	hl
 		ld	d,(hl)
 		ld	(dh_k),de
 		ex	de,hl
 		call	freq_of
 		ld	(dh_kf),hl
-downheap.loop:
-		ld	hl,(dh_i)	; j = 2i, while j <= hs
+		ld	hl,(hs)		; dh_end -> heap[hs]
 		add	hl,hl
-		ld	(dh_j),hl
+		ld	de,(heap_at)
+		add	hl,de
+		ld	(dh_end),hl
+		ld	hl,(dh_p)
+downheap.loop:
+		add	hl,hl		; HL -> heap[2i]: 2 dh_p - heap_at
+		ld	de,(heap_at)
+		or	a
+		sbc	hl,de
+		ex	de,hl		; past heap[hs]: done
+		ld	hl,(dh_end)
+		or	a
+		sbc	hl,de
 		ex	de,hl
-		ld	hl,(hs)
-		or	a
-		sbc	hl,de
 		jr	c,downheap.done
-		jr	z,downheap.one
-		ld	hl,(dh_j)	; j < hs: the lesser of j and j+1
+		jr	z,downheap.one	; heap[hs]: no j+1
+		ld	e,(hl)		; the lesser of j and j+1
 		inc	hl
-		call	heap_freq
-		push	hl
-		ld	hl,(dh_j)
-		call	heap_freq
-		pop	de
-		or	a
-		sbc	hl,de
-		jr	c,downheap.one
-		jr	z,downheap.one
-		ld	hl,(dh_j)	; j+1 is used less
+		ld	d,(hl)
 		inc	hl
-		ld	(dh_j),hl
-downheap.one:
-		ld	hl,(dh_j)	; k used no more than j: k stays
-		call	heap_freq
-		ld	de,(dh_kf)
-		or	a
-		sbc	hl,de
-		jr	nc,downheap.done
-		ld	hl,(dh_i)	; heap[i] = heap[j], i = j
-		call	heap_addr
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		dec	hl
+		dec	hl
+		dec	hl
 		push	hl
-		ld	hl,(dh_j)
-		call	heap_addr
+		ld	hl,(mt_freq)	; DE = j's count
+		add	hl,de
+		add	hl,de
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)
+		ld	hl,(mt_freq)	; HL = j+1's
+		add	hl,bc
+		add	hl,bc
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		or	a
+		sbc	hl,de
 		pop	hl
+		jr	nc,downheap.one
+		inc	hl		; j+1 is used less
+		inc	hl
+downheap.one:
+		ld	e,(hl)		; k used no more than j: k stays
+		inc	hl
+		ld	d,(hl)
+		dec	hl
+		push	hl
+		ld	hl,(mt_freq)
+		add	hl,de
+		add	hl,de
+		ld	a,(hl)
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		ld	bc,(dh_kf)
+		or	a
+		sbc	hl,bc
+		pop	hl
+		jr	nc,downheap.done
+		push	hl		; heap[i] = heap[j], i = j
+		ld	hl,(dh_p)
 		ld	(hl),e
 		inc	hl
 		ld	(hl),d
-		ld	hl,(dh_j)
-		ld	(dh_i),hl
+		pop	hl
+		ld	(dh_p),hl
 		jr	downheap.loop
 downheap.done:
-		ld	hl,(dh_i)	; heap[i] = k
-		call	heap_addr
+		ld	hl,(dh_p)	; heap[i] = k
 		ld	de,(dh_k)
 		ld	(hl),e
 		inc	hl
@@ -2292,25 +2494,12 @@ flush:
 flush.write:
 		ld	de,outbuf
 		call	archive_write
+		call	forget		; MSX-DOS had page 2
 		call	map_tables
 flush.done:
 		pop	hl
 		pop	de
 		pop	bc
-		ret
-
-; map_tables - the tables' block in page 2.
-;
-; Input:	tables_fp
-; Output:	DE -> the block
-; Modifies:	AF
-;		DE
-;		HL
-; Scratch:	none
-
-map_tables:
-		derefp	tables_fp
-		ex	de,hl
 		ret
 
 ; zero - fill BC bytes with 0.
@@ -2353,9 +2542,12 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ; Variables:
 ;
 ; tables_ready		not 0 once the mapper memory is allocated
-; tables_fp, text_fp, prev_fp
-;			the tables' block, and the text's and prev's
-;			segments: far pointers
+; text_fp, prev_fp, tables_fp
+;			the text's and prev's segments, and the tables'
+;			block: far pointers, in this order (map)
+; fast			1 when all three are in the primary mapper
+; p2cur, p2fast		map: which of them page 2 shows, 0 for none;
+;			whether p2seg may switch
 ; c_n, c_freq_at, c_len_at, c_code_at
 ;			c's tree, for make_tree: C_SYMS, and its arrays'
 ;			addresses in page 2
@@ -2385,15 +2577,18 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ; pend, pend_c, pend_p	the symbol to send: 0 none, 1 a literal, 2 a
 ;			match; the symbol; the distance - 1
 ; n_b, n_a, list_b, list_a
-;			the two searches' distances: how many, and each
+;			the two searches' positions to try: how many,
+;			and each
 ; qh			the round's hashes, doubled, then the positions
 ;			head held: MAX_MATCH words
-; w_s, w_c, wlim, d_last
-;			walk: the search's position, the chain's, the
-;			furthest back, the last distance
-; mx, best_len, best_d, s_d, s_q
-;			search: the longest a match may be, the best so
-;			far, and the distance and position being tried
+; w_s, w_neg		walk: the search's position; the furthest back
+;			it may go less it
+; mx, best_len, best_d	search: the longest a match may be, the best so
+;			far, its distance
+; s_c, s_n, s_at, s_list, s_byte
+;			search: the position being tried, how many are
+;			left after it, where s's byte is, where the list
+;			goes on, s's byte at the best length
 ; bufpos, cpos, mask	out_sym: where in the block, where the flags
 ;			byte is, the next flag bit
 ; o_kind, o_c, o_p	out_sym's symbol
@@ -2409,8 +2604,9 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ; avail, hs, sort_at	the next node, the heap's size, where the next
 ;			symbol out goes in code
 ; mt_i, mt_j, mt_root	the two nodes taken out, and the new one
-; dh_i, dh_j, dh_k, dh_kf
-;			downheap: i, j, k and k's count
+; dh_p, dh_end, dh_k, dh_kf
+;			downheap: -> heap[i], -> heap[hs], k and k's
+;			count
 ; leaf_num, first_code
 ;			how many symbols at each depth, and each length's
 ;			next code: 17 words each, 0 not used
@@ -2423,9 +2619,12 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ;			segment
 ;
 tables_ready:	defs	1
-tables_fp:	defs	4
 text_fp:	defs	4
 prev_fp:	defs	4
+tables_fp:	defs	4
+fast:		defs	1
+p2cur:		defs	1
+p2fast:		defs	1
 c_n:		defs	2
 c_freq_at:	defs	2
 c_len_at:	defs	2
@@ -2464,20 +2663,17 @@ pend_c:		defs	2
 pend_p:		defs	2
 n_b:		defs	1
 n_a:		defs	1
-		defs	2		; a 0 word before each list
 list_b:		defs	2*CHAIN
-		defs	2
 list_a:		defs	2*CHAIN
 w_s:		defs	2
-w_n:		defs	1
-wlim:		defs	2
+w_neg:		defs	2
 mx:		defs	2
 best_len:	defs	2
 best_d:		defs	2
-s_d:		defs	2
+s_c:		defs	2
 s_n:		defs	1
 s_at:		defs	2
-s_at_l:		defs	2
+s_list:		defs	2
 s_byte:		defs	1
 bufpos:		defs	2
 cpos:		defs	2
@@ -2504,8 +2700,8 @@ sort_at:	defs	2
 mt_i:		defs	2
 mt_j:		defs	2
 mt_root:	defs	2
-dh_i:		defs	2
-dh_j:		defs	2
+dh_p:		defs	2
+dh_end:		defs	2
 dh_k:		defs	2
 dh_kf:		defs	2
 leaf_num:	defs	34
