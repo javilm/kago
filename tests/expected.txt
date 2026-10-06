@@ -329,6 +329,21 @@ Extracting gpl-2 OK
 Extracting FAR.DAT OK
 --- unkago /O /D:lh5 ..\unkago\far7.lzh
 Extracting FAR.DAT OK
+=== UNKAGO LH1
+--- unkago /O /D:lh1 ..\unkago\l0lh1.lzh
+Extracting GPL-2 OK
+--- unkago /L ..\unkago\lh1.lzh
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      3345      70000 -lh1-  2026-10-08 12:00 BIG.DAT
+     15328      40000 -lh1-  2026-10-08 12:00 BIN.DAT
+     50073      86000 -lh1-  2026-10-08 12:00 FAR.DAT
+---------- ---------- ------                  ------------
+     68746     196000        3 files
+--- unkago /O /D:lh1 ..\unkago\lh1.lzh
+Extracting BIG.DAT OK
+Extracting BIN.DAT OK
+Extracting FAR.DAT OK
 === UNKAGO DIRECTORIES
 --- unkago /L ..\unkago\tree.lzh
     Packed   Original Method Date             Name

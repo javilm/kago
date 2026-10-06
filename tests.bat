@@ -184,6 +184,19 @@ echo --- unkago /O /D:lh5 ..\unkago\far7.lzh>>..\results.txt
 ..\..\build\unkago /O /D:lh5 ..\unkago\far7.lzh>>..\results.txt
 cd ..\..
 
+rem LH1 runs in TESTS\OUT and extracts into TESTS\OUT\LH1: LHarc 1.13's
+rem GPL-2 (L0LH1.LZH), then LH1.LZH, from LHa for UNIX: FAR.DAT, long
+rem enough that the adaptive tree is rebuilt twice, BIN.DAT and BIG.DAT.
+echo === UNKAGO LH1>>tests\results.txt
+cd tests\out
+echo --- unkago /O /D:lh1 ..\unkago\l0lh1.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh1 ..\unkago\l0lh1.lzh>>..\results.txt
+echo --- unkago /L ..\unkago\lh1.lzh>>..\results.txt
+..\..\build\unkago /L ..\unkago\lh1.lzh>>..\results.txt
+echo --- unkago /O /D:lh1 ..\unkago\lh1.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh1 ..\unkago\lh1.lzh>>..\results.txt
+cd ..\..
+
 rem DIRECTORIES runs in TESTS\OUT and extracts into TESTS\OUT\DIRS,
 rem PATHS and SEL2: trees from each header level, -lhd- members, paths
 rem that are cleaned (from the root, with a drive, with . and ..), a

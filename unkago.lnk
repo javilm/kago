@@ -4,6 +4,7 @@ lzh.tro				; reading LZH archives
 crc.tro				; the CRC-16
 lh5.tro				; the -lh5- decoder
 inflate.tro			; deflate
+lh1.tro				; -lh1-
 names.tro			; the MSX-DOS names
 zip.tro				; reading ZIP archives
 progress.tro			; the progress line, shared with KAGO

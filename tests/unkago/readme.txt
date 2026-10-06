@@ -129,6 +129,17 @@ long7.lzh
     1.14i, level 1, -lh7-, long.txt, the same 1241658 bytes as
     long.lzh's in 76620: for SPEED.BAT, not for TESTS.BAT
     sha256 37ffaebe08c9d8dcf8e9add232187bcdaa1313b13f7c22efe810b8bf883eaae5
+lh1.lzh
+    made for Tsuzura with LHa for UNIX 1.14i-ac20260723, lha co2
+    (-lh1-), level 2, dated 2026-10-08 12:00 UTC: FAR.DAT, far6.lzh's
+    86000 bytes, long enough (48714 symbols) that the adaptive tree is
+    rebuilt twice; BIN.DAT, jlh5.lzh's 40000 bytes; and BIG.DAT, the
+    70000 bytes of tests\kago\kin.lzh's
+    sha256 9c6b3988a68e22fe34104a07258ca71774a7b64ce456889dd6fe0cdcb4979ad4
+long1.lzh
+    the same LHa, lha co1, level 1, -lh1-: LONG.TXT, the same 1241658
+    bytes as long.lzh's, in 110241: for SPEED.BAT, not for TESTS.BAT
+    sha256 ad68bc674186c48394ca81818af8879afa5215cea5db7ad561ea58da69c3a9cb
 tree.lzh
     made for Tsuzura with LHa for UNIX 1.14i-ac20260723, level 2: a
     tree with -lhd- members for TREE, TREE\EMPTY, TREE\SUB and

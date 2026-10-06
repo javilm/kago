@@ -1,6 +1,6 @@
-; lh5share.inc - what inflate.as shares of lh5.as beyond lh5.inc: the
-; tables' layout, the routines it builds and reads them with, and the
-; variables they work on. Only inflate.as and lh5.as include it.
+; lh5share.inc - what inflate.as and lh1.as share of lh5.as beyond
+; lh5.inc: the tables' layout, the routines it builds and reads them
+; with, and the variables they work on. Only they and lh5.as include it.
 ;
 ; lh5.as defines LH5_INCLUDED before including this file, so that it
 ; does not declare its own names as external.
@@ -31,5 +31,6 @@ PT_TABLE	equ	8192		; 256 words: 8 bits to a symbol
 		extrn	bitcnt		; the bits left in the byte now
 		extrn	sym_vector	; where lh5_read's symbols come
 		extrn	dist_vector	;   from, and its distances
+		extrn	bitbuf		; the next 16 bits, the first highest
 		endif
 

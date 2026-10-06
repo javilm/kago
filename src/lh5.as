@@ -42,7 +42,8 @@
 ; reach 32 KB as -lh6-'s do, and only its bit order and its blocks
 ; differ. So window_start takes the bit order, and lh5_read gets its
 ; symbols and distances through sym_vector and dist_vector: decode_c
-; and decode_p here, inflate.as's own for deflate.
+; and decode_p here, inflate.as's own for deflate. lh1.as decodes
+; -lh1- the same way, its adaptive tree in the tables' block.
 ;
 ; The formats and the table builder follow LHa for UNIX 1.14i
 ; (reference/lha-unix: src/huf.c, maketbl.c, slide.c), checked step
@@ -74,6 +75,7 @@ LH5_INCLUDED	equ	1		; lh5.inc: not our names as extrn
 		public	bitcnt
 		public	sym_vector
 		public	dist_vector
+		public	bitbuf
 
 		include	common.inc	; dos, and MapperHeap's routines
 		include	farptr.inc	; fpalloc, derefp
