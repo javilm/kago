@@ -15,7 +15,7 @@
 ;   header, a match's extra bits, a stored block's bytes) is written
 ;   lowest bit first instead, so inf_bits turns its bits round.
 ; - A block is stored (its bytes as they are, after its length), fixed
-;   (built-in code lengths) or dynamic (its own, note 018).
+;   (built-in code lengths) or dynamic (its own, sent before it).
 ; - The literal and length symbols are 0 to 287: 256 ends the block,
 ;   257 to 285 are lengths 3 to 258 with extra bits after them. They go
 ;   to lh5_read as LHA's symbols, a length L as 253 + L.
@@ -251,9 +251,8 @@ inf_distance.bad:
 ;   what follows for that type.
 ;
 ;   Stored: to the next byte's start, then the length and its
-;   complement, 16 bits each. Fixed: the built-in lengths. Dynamic: not
-;   read yet (note 018), so data that is not valid, for now; type 3 is
-;   never valid.
+;   complement, 16 bits each. Fixed: the built-in lengths. Dynamic: the
+;   block's own (dynamic_tables). Type 3 is never valid.
 ;
 ; Input:	the bit reader
 ; Output:	inf_final, inf_state; stored_left, or the tables
@@ -278,7 +277,9 @@ read_header:
 		jr	z,read_header.stored
 		dec	a
 		jr	z,fixed_tables
-		jp	bad_table	; 2, dynamic: note 018; 3: not valid
+		dec	a
+		jp	z,dynamic_tables
+		jp	bad_table	; 3: not valid
 read_header.stored:
 		ld	a,(bitcnt)	; to the next byte: past the bits
 		and	7		;   left in this one, 8 being none
@@ -373,6 +374,261 @@ build_tables:
 		ld	(mt_table),hl
 		jp	make_table
 
+; dynamic_tables - the tables of a dynamic block, as its header sends
+;   them.
+;
+;   HLIT (5 bits) + 257 literal and length codes, HDIST (5) + 1
+;   distance codes, HCLEN (4) + 4 code length codes. First the code
+;   length codes' lengths, 3 bits each, in cl_order's order: they make
+;   pt_table (19 symbols, 8 bits). Then, decoded through it, the
+;   HLIT + HDIST lengths in one run, into c_len: 0 to 15 is a length;
+;   16 repeats the one before 3 to 6 times (2 extra bits); 17 is 3 to
+;   10 zeros (3 bits); 18 is 11 to 138 zeros (7 bits). A repeat may
+;   cross from the literals to the distances, which is why they are
+;   read as one run. The distances' lengths then move to pt_len, and
+;   build_tables makes both tables.
+;
+;   A block may send one distance code, or none (only literals). That
+;   set is not complete, and make_table refuses it, so dummies of
+;   length 1 complete it (complete_distances); they are 30 and 31,
+;   which inf_distance never takes. zlib always sends two, so these
+;   archives never need it.
+;
+; Input:	the bit reader
+; Output:	the tables; inf_state = STATE_HUFFMAN
+;		lh5_error = LH5_BAD for lengths that are not valid
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	hlit
+;		hdist
+;		len_total
+;		len_i
+;		rep_value
+
+dynamic_tables:
+		ld	b,5		; HLIT + 257
+		call	inf_bits
+		ld	de,257
+		add	hl,de
+		ld	(hlit),hl
+		ld	b,5		; HDIST + 1
+		call	inf_bits
+		inc	l
+		ld	a,l
+		ld	(hdist),a
+		ld	b,4		; HCLEN + 4
+		call	inf_bits
+		ld	a,l
+		add	a,4
+		push	af
+		call	tables_in
+		ld	hl,pt_len	; the code length codes' lengths:
+		ld	bc,19*256+0	;   0 unless sent
+		call	fill_lengths
+		pop	bc		; B = HCLEN + 4
+		ld	hl,cl_order
+dynamic_tables.order:
+		push	bc
+		push	hl
+		ld	b,3
+		call	inf_bits	; L = the length
+		ld	a,l
+		pop	hl
+		ld	e,(hl)		; its symbol, from cl_order
+		inc	hl
+		push	hl
+		ld	d,0
+		ld	hl,pt_len
+		add	hl,de
+		ld	(hl),a
+		pop	hl
+		pop	bc
+		djnz	dynamic_tables.order
+		ld	a,19		; pt_table: the code length codes
+		ld	(p_syms),a
+		ld	hl,19
+		ld	(mt_n),hl
+		ld	hl,pt_len
+		ld	(mt_len),hl
+		ld	a,8
+		ld	(mt_bits),a
+		ld	hl,(tables)
+		ld	de,PT_TABLE
+		add	hl,de
+		ld	(mt_table),hl
+		call	make_table
+		ld	a,(lh5_error)
+		or	a
+		ret	nz
+		ld	hl,(hlit)	; the lengths: HLIT + HDIST of them
+		ld	a,(hdist)
+		ld	e,a
+		ld	d,0
+		add	hl,de
+		ld	(len_total),hl
+		ld	hl,0
+		ld	(len_i),hl
+dynamic_tables.length:
+		ld	hl,(len_i)
+		ld	de,(len_total)
+		or	a
+		sbc	hl,de
+		jr	nc,dynamic_tables.read	; all of them
+		call	decode_pt	; E = 0 to 18
+		ld	a,(lh5_error)
+		or	a
+		ret	nz
+		ld	a,e
+		cp	16
+		jr	nc,dynamic_tables.repeat
+		ld	hl,(len_i)	; a length
+		ld	bc,c_len
+		add	hl,bc
+		ld	(hl),a
+		ld	hl,(len_i)
+		inc	hl
+		ld	(len_i),hl
+		jr	dynamic_tables.length
+dynamic_tables.repeat:
+		cp	17
+		jr	nc,dynamic_tables.zeros
+		ld	hl,(len_i)	; 16: the one before, 3 to 6 times
+		ld	a,h
+		or	l
+		jp	z,bad_table	; there is none
+		dec	hl
+		ld	bc,c_len
+		add	hl,bc
+		ld	a,(hl)
+		ld	(rep_value),a
+		ld	b,2
+		call	inf_bits
+		ld	a,l
+		add	a,3
+		jr	dynamic_tables.run
+dynamic_tables.zeros:
+		ld	b,3		; 17: 3 to 10 zeros, 3 bits
+		ld	c,3
+		jr	z,dynamic_tables.zero_bits	; Z still from CP 17
+		ld	b,7		; 18: 11 to 138, 7 bits
+		ld	c,11
+dynamic_tables.zero_bits:
+		push	bc
+		call	inf_bits
+		pop	bc
+		xor	a
+		ld	(rep_value),a
+		ld	a,l
+		add	a,c
+dynamic_tables.run:
+		ld	c,a		; BC = how many
+		ld	b,0
+		ld	hl,(len_i)	; no further than the last
+		add	hl,bc
+		ld	de,(len_total)
+		ex	de,hl
+		or	a
+		sbc	hl,de
+		jp	c,bad_table
+		ld	hl,(len_i)
+		push	hl
+		add	hl,bc
+		ld	(len_i),hl
+		pop	hl
+		ld	de,c_len
+		add	hl,de
+		ld	b,c
+		ld	a,(rep_value)
+		ld	c,a
+		call	fill_lengths
+		jp	dynamic_tables.length	; too far for jr
+dynamic_tables.read:
+		ld	hl,pt_len	; the distances' lengths: to pt_len,
+		ld	bc,32*256+0	;   0 after them
+		call	fill_lengths
+		ld	hl,(hlit)
+		ld	de,c_len
+		add	hl,de
+		push	hl
+		ld	de,pt_len
+		ld	a,(hdist)
+		ld	c,a
+		ld	b,0
+		ldir
+		pop	hl		; c_len after the literals: 0
+		ld	de,(hlit)
+		ex	de,hl
+		push	de
+		ld	de,LIT_SYMS
+		ex	de,hl
+		or	a
+		sbc	hl,de
+		pop	de
+		ld	a,l		; 0 to 31 of them
+		ex	de,hl
+		or	a
+		jr	z,dynamic_tables.complete
+		ld	b,a
+		ld	c,0
+		call	fill_lengths
+dynamic_tables.complete:
+		call	complete_distances
+		ld	a,STATE_HUFFMAN
+		ld	(inf_state),a
+		jp	build_tables
+
+; complete_distances - one distance code, or none, made a complete set:
+;   with 30 and 31, of length 1, for none; with 31 (or 30, if the one is
+;   31), of length 1, for one. A single code of another length stays
+;   as it is, and make_table refuses it, as zlib does.
+;
+; Input:	pt_len: 32 lengths
+; Output:	pt_len
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+complete_distances:
+		ld	hl,pt_len	; C = how many have a code,
+					;   E = the last of them
+		ld	bc,32*256+0
+		ld	de,0		; D = the number looked at
+complete_distances.count:
+		ld	a,(hl)
+		or	a
+		jr	z,complete_distances.next
+		inc	c
+		ld	e,d
+complete_distances.next:
+		inc	hl
+		inc	d
+		djnz	complete_distances.count
+		ld	a,c
+		cp	2
+		ret	nc		; two or more: as sent
+		or	a
+		jr	z,complete_distances.none
+		ld	a,e		; one: a partner, 31, or 30 if it is 31
+		ld	hl,pt_len+31
+		cp	31
+		jr	nz,complete_distances.partner
+		dec	hl
+complete_distances.partner:
+		ld	(hl),1
+		ret
+complete_distances.none:
+		ld	hl,pt_len+30
+		ld	(hl),1
+		inc	hl
+		ld	(hl),1
+		ret
+
 ; fill_lengths - B code lengths of C, at HL.
 ;
 ; Input:	HL -> where they go
@@ -388,6 +644,13 @@ fill_lengths:
 		djnz	fill_lengths
 		ret
 
+; Constants for the routines above:
+;
+; cl_order		the order in which a dynamic block sends its code
+;			length codes' lengths
+;
+cl_order:	defb	16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15
+
 		dseg
 
 ; Variables for the routines above:
@@ -395,10 +658,19 @@ fill_lengths:
 ; inf_state		STATE_HEADER, STATE_HUFFMAN or STATE_STORED
 ; inf_final		not 0 once the last block's header is read
 ; stored_left		a stored block's bytes not given yet
+; hlit, hdist		dynamic_tables: the literal and length codes, and
+;			the distance codes, the block sends
+; len_total, len_i	dynamic_tables: the lengths to read, and the next
+; rep_value		dynamic_tables: the length a repeat repeats
 ;
 inf_state:	defs	1
 inf_final:	defs	1
 stored_left:	defs	2
+hlit:		defs	2
+hdist:		defs	1
+len_total:	defs	2
+len_i:		defs	2
+rep_value:	defs	1
 
 		end
 

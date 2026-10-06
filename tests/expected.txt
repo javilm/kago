@@ -555,7 +555,7 @@ Extracting caf?.txt as CAF_~1.TXT OK
 Extracting ??\?.txt as __~1\_~1.TXT OK
 Extracting dos.txt OK
 --- unkago /O /D:zip ..\unkago\zdefl.zip
-Extracting gpl.txt data error
+Extracting gpl.txt OK
 Extracting ztree\a.txt OK
 --- unkago /O /D:zip ..\unkago\zenc.zip
 Skipping secret.txt: it is encrypted
@@ -576,6 +576,12 @@ Extracting one.txt OK
 Extracting noise.dat OK
 --- unkago /O /D:infl ..\unkago\zflush.zip
 Extracting words.txt OK
+--- unkago /O /D:infl ..\unkago\zdyn.zip
+Extracting src\lha_decoder.c as SRC\LHA_DE~1.C OK
+Extracting src\lha_file_header.c as SRC\LHA_FI~1.C OK
+Extracting src\ext_header.c as SRC\EXT_HE~1.C OK
+Extracting bin\table.dat OK
+Extracting runs.dat OK
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

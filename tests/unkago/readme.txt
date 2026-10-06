@@ -214,6 +214,17 @@ zflush.zip
     the same, WORDS.TXT in fixed blocks, with an empty stored block
     (zlib's full flush) half way
     sha256 d299adddf2cc3c932dbd553af2e3e41abe51e1677f16e5ebec7213118f6b2043
+zdyn.zip
+    made for Tsuzura with Python's zipfile and zlib (note 018), deflate
+    at level 9, as Info-ZIP's: dynamic blocks for three of lhasa's C
+    sources (SRC\), 60000 bytes of patterned binary (BIN\TABLE.DAT)
+    and 20000 a's (RUNS.DAT)
+    sha256 2700edf5d6add3f84de1d911c5a3036665dd7764e68a77450c501996915e23b5
+zlong.zip
+    made for Tsuzura with Info-ZIP's zip -9: LONG.TXT, the same 1241658
+    bytes as long.lzh's, in 80331 of deflate: for SPEED.BAT, not for
+    TESTS.BAT
+    sha256 d9d28f0e16fc406b51cd829b62fe01c424eb88df5a736dac0e7d14d518666953
 
 The archives from lhasa are distributed under its licence:
 
