@@ -1,0 +1,194 @@
+TSUZURA TEST RUN
+=== KAGO
+--- kago
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: KAGO [switches] archive files...
+
+  /F:fmt  the format: LZH, PMA or ZIP. Without it,
+          the archive name's extension decides
+  /Y      proceed without asking when memory is short
+  /Q      quiet: no progress
+  /V      the banner above, and nothing else
+  /?      this text
+
+--- kago /f:zip archive.zip file.txt
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: KAGO [switches] archive files...
+
+  /F:fmt  the format: LZH, PMA or ZIP. Without it,
+          the archive name's extension decides
+  /Y      proceed without asking when memory is short
+  /Q      quiet: no progress
+  /V      the banner above, and nothing else
+  /?      this text
+
+--- kago /Q /Y
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: KAGO [switches] archive files...
+
+  /F:fmt  the format: LZH, PMA or ZIP. Without it,
+          the archive name's extension decides
+  /Y      proceed without asking when memory is short
+  /Q      quiet: no progress
+  /V      the banner above, and nothing else
+  /?      this text
+
+--- kago a/b
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: KAGO [switches] archive files...
+
+  /F:fmt  the format: LZH, PMA or ZIP. Without it,
+          the archive name's extension decides
+  /Y      proceed without asking when memory is short
+  /Q      quiet: no progress
+  /V      the banner above, and nothing else
+  /?      this text
+
+--- kago /?
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: KAGO [switches] archive files...
+
+  /F:fmt  the format: LZH, PMA or ZIP. Without it,
+          the archive name's extension decides
+  /Y      proceed without asking when memory is short
+  /Q      quiet: no progress
+  /V      the banner above, and nothing else
+  /?      this text
+
+--- kago /v
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+--- kago /V archive.lzh
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+--- kago /V /?
+KAGO LZH/PMA/ZIP Compressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: KAGO [switches] archive files...
+
+  /F:fmt  the format: LZH, PMA or ZIP. Without it,
+          the archive name's extension decides
+  /Y      proceed without asking when memory is short
+  /Q      quiet: no progress
+  /V      the banner above, and nothing else
+  /?      this text
+
+--- kago /X
+
+*** Invalid option
+--- kago /L x.lzh
+
+*** Invalid option
+--- kago /
+
+*** Invalid option
+--- kago /V /X
+
+*** Invalid option
+=== UNKAGO
+--- unkago
+UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: UNKAGO [switches] archive [members...]
+
+  /D:path  extract into path, made if missing:
+           B:  B:\TEST  \TEMP  TEMP\FILES
+  /L       list the archive, extract nothing
+  /Q       quiet: no progress
+  /V       the banner above, and nothing else
+  /?       this text
+
+Members may use * and ?. Naming a directory
+extracts everything under it.
+
+--- unkago /D:B:\TEST x.lzh
+UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: UNKAGO [switches] archive [members...]
+
+  /D:path  extract into path, made if missing:
+           B:  B:\TEST  \TEMP  TEMP\FILES
+  /L       list the archive, extract nothing
+  /Q       quiet: no progress
+  /V       the banner above, and nothing else
+  /?       this text
+
+Members may use * and ?. Naming a directory
+extracts everything under it.
+
+--- unkago /l /q
+UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: UNKAGO [switches] archive [members...]
+
+  /D:path  extract into path, made if missing:
+           B:  B:\TEST  \TEMP  TEMP\FILES
+  /L       list the archive, extract nothing
+  /Q       quiet: no progress
+  /V       the banner above, and nothing else
+  /?       this text
+
+Members may use * and ?. Naming a directory
+extracts everything under it.
+
+--- unkago /?
+UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+
+Usage: UNKAGO [switches] archive [members...]
+
+  /D:path  extract into path, made if missing:
+           B:  B:\TEST  \TEMP  TEMP\FILES
+  /L       list the archive, extract nothing
+  /Q       quiet: no progress
+  /V       the banner above, and nothing else
+  /?       this text
+
+Members may use * and ?. Naming a directory
+extracts everything under it.
+
+--- unkago /V x.lzh
+UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+Copyright (C) 2026 Javier Lavandeira
+https://github.com/javilm/kago
+--- unkago /F:LZH x.lzh
+
+*** Invalid option
+--- unkago /Y
+
+*** Invalid option
+=== MAPTEST
+--- maptest
+MAPTEST - a mapper block: allocate, write, read, free
+heapinit: OK
+halloc, 16372 bytes: OK
+written: 16372 bytes
+read back after a remap: OK
+hfree: OK, no blocks left
+=== END OF RUN

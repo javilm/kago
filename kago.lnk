@@ -1,4 +1,5 @@
 ; kago.lnk - the modules of KAGO, in link order
 kago.tro			; the entry point comes first
-common.tro			; shared with UNKAGO
+common.tro			; shared with UNKAGO and MAPTEST
+alloc.tro			; MapperHeap
 

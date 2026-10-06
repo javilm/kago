@@ -1,5 +1,7 @@
-; common.as - what KAGO and UNKAGO both need: the MSX-DOS2 check, a
-; way to print, and reading the switches on the command line.
+; common.as - what every program here needs: the MSX-DOS2 check,
+; reading the switches on the command line, and safe_p2restore, which
+; the dos macro (common.inc) calls before every MSX-DOS call. Printing
+; is the print macro, in common.inc.
 ;
 ; Phase 0 keeps it to the minimum. A routine that only one tool needs
 ; stays in that tool's own module.
@@ -7,15 +9,15 @@
 		public	dos_version
 		public	find_bad_switch
 		public	switch_given
-		public	print_dollar_string
+		public	safe_p2restore
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	ascii.inc	; CHR_SPACE, CHR_TAB
+		include	alloc.inc	; p2restore, in MapperHeap
 
 COMMAND_TAIL	equ	0081h		; the command line after the command
 					;   name, ending in 0, put here by
 					;   MSX-DOS2
-STDOUT		equ	1		; the standard output handle
 
 		cseg
 
@@ -35,6 +37,7 @@ STDOUT		equ	1		; the standard output handle
 
 dos_version:
 		ld	b,1		; the value MSX-DOS1 leaves untouched
+		call	safe_p2restore	; keeps B; see the dos macro
 		system	_DOSVER		; MSX-DOS2 -> B = the major version
 		ld	a,b
 		cp	2
@@ -177,46 +180,38 @@ skip_word:
 		inc	de
 		jr	skip_word
 
-; print_dollar_string - write the "$"-terminated string at DE to
-; standard output.
+; safe_p2restore - p2restore, keeping the registers it would destroy.
 ;
-;   Through _WRITE on the standard output handle rather than _STROUT,
-;   so that every path to standard output is the same one - as in
-;   Tatara's shared msxdos.as, where the reason is written out.
+;   MapperHeap's rule: page 2 belongs to MSX-DOS whenever MSX-DOS runs,
+;   so p2restore (in alloc.as) comes before every MSX-DOS call. But
+;   p2restore destroys AF, BC, DE and HL, and those are where an
+;   MSX-DOS call takes its parameters, already loaded by the time the
+;   call is made: B for _TERM, DE for _STROUT. So they are pushed
+;   around it here, once, rather than at every call; the dos macro
+;   (common.inc) calls this.
 ;
-;   NOT USABLE UNDER MSX-DOS1, which has no handles. The message that
-;   says MSX-DOS2 is needed uses _STROUT instead, and it is the only
-;   one printed before dos_version has answered.
+;   Until heapinit has run, p2restore returns at once, so this is safe
+;   from the first instruction of a program, under MSX-DOS1 included.
 ;
-;   A write error is ignored: a message is what has just failed.
+;   IX and IY are not kept: p2restore's header does not name them, and
+;   no MSX-DOS call made so far takes a parameter in them. To be checked
+;   when the first one does.
 ;
-; Input:	DE -> the string, "$" terminated
-; Output:	it is written to standard output
-; Modifies:	AF
-;		BC
-;		DE
-;		HL
+; Input:	none
+; Output:	page 2 belongs to MSX-DOS
+; Modifies:	none
 ; Scratch:	none
 
-print_dollar_string:
-		ld	h,d		; measure first, then one _WRITE
-		ld	l,e
-		ld	bc,0
-print_dollar_string.measure:
-		ld	a,(hl)
-		cp	"$"
-		jr	z,print_dollar_string.write
-		inc	hl
-		inc	bc
-		jr	print_dollar_string.measure
-print_dollar_string.write:
-		ld	h,b		; HL = the length
-		ld	l,c
-		ld	a,h
-		or	l
-		ret	z		; "$" first: nothing to write
-		ld	b,STDOUT
-		system	_WRITE
+safe_p2restore:
+		push	af
+		push	bc
+		push	de
+		push	hl
+		call	p2restore
+		pop	hl
+		pop	de
+		pop	bc
+		pop	af
 		ret
 
 		end

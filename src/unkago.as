@@ -3,10 +3,7 @@
 ; It checks for MSX-DOS2, checks the command line for a switch it does
 ; not take, and prints its usage or its banner. Nothing else yet.
 
-		extrn	dos_version	; in common.as
-		extrn	find_bad_switch	; in common.as
-		extrn	switch_given	; in common.as
-		extrn	print_dollar_string	; in common.as
+		include	common.inc	; common.as's routines, and print
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT
@@ -39,30 +36,26 @@ main:
 		ld	c,"V"
 		call	switch_given
 		jr	nc,main.usage
-		ld	de,msg_banner	; /V: the banner, and nothing else
-		call	print_dollar_string
-		system	_TERM0
+		print	msg_banner	; /V: the banner, and nothing else
+		dos	_TERM0
 
 main.usage:
-		ld	de,msg_banner
-		call	print_dollar_string
-		ld	de,msg_usage
-		call	print_dollar_string
-		system	_TERM0
+		print	msg_banner
+		print	msg_usage
+		dos	_TERM0
 
 main.bad_switch:
 		ld	b,.IOPT		; COMMAND2: *** Invalid option
-		system	_TERM
+		dos	_TERM
 
 main.need_dos2:
-		ld	de,msg_need_dos2
-		system	_STROUT		; the one way MSX-DOS1 can print
-		system	_TERM0		; function 00h, in MSX-DOS1 too
+		print	msg_need_dos2	; _STROUT: MSX-DOS1 has it too
+		dos	_TERM0		; function 00h, in MSX-DOS1 too
 
 ; Constants for main:
 ;
 ; switch_letters	the switches UNKAGO takes, upper case, ending in 0
-; msg_need_dos2		the refusal under MSX-DOS1, for _STROUT
+; msg_need_dos2		the refusal under MSX-DOS1
 ; msg_banner		the name, version, copyright and web address
 ; msg_usage		the rest of the usage, after the banner
 ;
