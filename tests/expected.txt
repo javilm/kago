@@ -123,39 +123,10 @@ Members may use * and ?. Naming a directory
 extracts everything under it.
 
 --- unkago /D:B:\TEST x.lzh
-UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
-Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
-
-Usage: UNKAGO [switches] archive [members...]
-
-  /D:path  extract into path, made if missing:
-           B:  B:\TEST  \TEMP  TEMP\FILES
-  /L       list the archive, extract nothing
-  /Q       quiet: no progress
-  /V       the banner above, and nothing else
-  /?       this text
-
-Members may use * and ?. Naming a directory
-extracts everything under it.
-
+UNKAGO cannot extract yet: use /L to list.
 --- unkago /l /q
-UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
-Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
 
-Usage: UNKAGO [switches] archive [members...]
-
-  /D:path  extract into path, made if missing:
-           B:  B:\TEST  \TEMP  TEMP\FILES
-  /L       list the archive, extract nothing
-  /Q       quiet: no progress
-  /V       the banner above, and nothing else
-  /?       this text
-
-Members may use * and ?. Naming a directory
-extracts everything under it.
-
+*** Missing parameter
 --- unkago /?
 UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
 Copyright (C) 2026 Javier Lavandeira
@@ -183,6 +154,50 @@ https://github.com/javilm/kago
 --- unkago /Y
 
 *** Invalid option
+--- unkago tests\unkago\multi0.lzh
+UNKAGO cannot extract yet: use /L to list.
+--- unkago /L tests\unkago\nosuch.lzh
+
+*** File not found
+--- unkago /L tests\unkago\multi0.lzh
+README.TXT
+A$B.TXT
+EMPTY.DAT
+--- unkago /L tests\unkago\multi1.lzh
+README.TXT
+A$B.TXT
+EMPTY.DAT
+--- unkago /L tests\unkago\multi2.lzh
+README.TXT
+A$B.TXT
+EMPTY.DAT
+--- unkago /L tests\unkago\l0lh1.lzh
+GPL-2
+--- unkago /L tests\unkago\l0lh7.lzh
+gpl-2
+--- unkago /L tests\unkago\l1lh5.lzh
+GPL-2
+--- unkago /L tests\unkago\l1lh6.lzh
+gpl-2
+--- unkago /L tests\unkago\l2lh5.lzh
+gpl-2
+--- unkago /L tests\unkago\l2lhx.lzh
+GPL-2
+--- unkago /L tests\unkago\l3lh5.lzh
+Header level 3: UNKAGO reads levels 0, 1 and 2.
+--- unkago /L tests\unkago\badsum.lzh
+README.TXT
+The archive is damaged: a header is not valid.
+--- unkago /L tests\unkago\cuthead.lzh
+README.TXT
+The archive ends in the middle of a member.
+--- unkago /L tests\unkago\cutdata.lzh
+gpl-2
+The archive ends in the middle of a member.
+--- unkago /L tests\unkago\notlzh.txt
+Not an LZH archive.
+--- unkago /L tests\unkago\empty.lzh
+Not an LZH archive.
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

@@ -1,0 +1,76 @@
+tests\unkago\ - the test archives for UNKAGO, and where they come from.
+
+What UNKAGO prints for each file here is compared, byte for byte, with
+tests\expected.txt (see tests.bat). The lhasa archives are copies of
+real archives made by the tools named. The names in the expected
+listings were checked against lhasa 0.4.0's own listings; the copy of
+lhasa this project keeps is reference\lhasa, at commit 75ed835.
+
+multi0.lzh
+    made for Tsuzura with LHa for Java (jlha-utils), level 0: README.TXT,
+    A$B.TXT and EMPTY.DAT, stored (-lh0-)
+    sha256 eb6851cca3aa3206cc055fe8aab6cd3bd703b665dc0e37f4f9c8d1a793c94303
+multi1.lzh
+    the same, level 1
+    sha256 b59963643cd2dce8631c59adc0b9d0fcf79fd0d58b927b439652c817dcb4d593
+multi2.lzh
+    the same, level 2
+    sha256 c784a944da9342979356651b39b561180f30a843e7c44d33f37254198a0a3b66
+l0lh1.lzh
+    lhasa test/archives/lharc113/lh1.lzh: LHarc 1.13, level 0, -lh1-
+    sha256 594af58cb27d6a80e9bebd108cc82a8ab881a4b5549e4fc10379fbf7a0d83069
+l0lh7.lzh
+    lhasa test/archives/explzh_723/h0_lh7.lzh: Explzh 7.23, level 0, -lh7-
+    sha256 f39c61e286f2eb274ff163f3bb730ac63a255ac05f770934835fc4a6ac163c58
+l1lh5.lzh
+    lhasa test/archives/lha213/lh5.lzh: LHA 2.13, level 1, -lh5-
+    sha256 7f10d0be69536733217e984e4ff81d8980f2df06822581d7c006257bfad34851
+l1lh6.lzh
+    lhasa test/archives/explzh_723/h1_lh6.lzh: Explzh 7.23, level 1, -lh6-
+    sha256 51f327c4b42d5a41b6c4632d527818d903d11826bbf15f2e2f44a3b8cfc9cd8c
+l2lh5.lzh
+    lhasa test/archives/lha_unix114i/h2_lh5.lzh: LHa for UNIX 1.14i, level 2,
+    -lh5-
+    sha256 67fa06a23f8b85373fff2a8bb3bfc13e3ab491b82c0c2933fa187305bd594ad6
+l2lhx.lzh
+    lhasa test/archives/unlha32/h2_lhx.lzh: UNLHA32, level 2, -lhx-
+    sha256 c9ab661c5502714f9556be89617bddff237e0e21e72657dc019707aed9751d9b
+l3lh5.lzh
+    lhasa test/archives/lha_os2_208/h3_lh5.lzh: LHA 2.08 for OS/2, level 3
+    sha256 d980d1ddc47323fc860b0fb7829d72ce26afbe1f3f59f89e52f0eda54f425212
+badsum.lzh
+    multi0.lzh with the second header's checksum byte XORed with 55h
+    sha256 e1750bf8c79f93a7458d01a7d37f2acc36764d1ad7aedc55d9ee733c1ecca432
+cuthead.lzh
+    the first 74 bytes of multi1.lzh: it ends inside the second header
+    sha256 0df0b28aaf41820b47d683ca573e276d522022415a11591ac5b9363d276800b3
+cutdata.lzh
+    the first 4000 bytes of l2lh5.lzh: it ends inside the member's data
+    sha256 e649afa8294f60b12290618a370e5897ced14669a2d4ce669d4164a25fce6ecb
+notlzh.txt
+    a line of text: "This file is not an archive."
+    sha256 e13d8a1c7222cbc9b05c972937419ecb387f954bb531b05d155948d891086cc4
+empty.lzh
+    an empty file, 0 bytes
+    sha256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+
+The archives from lhasa are distributed under its licence:
+
+ISC License
+
+Copyright (c) 2011-2025, Simon Howard
+
+Permission to use, copy, modify, and/or distribute this software
+for any purpose with or without fee is hereby granted, provided
+that the above copyright notice and this permission notice appear
+in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
+WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED
+WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE
+AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR
+CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
+NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
+CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+

@@ -56,6 +56,41 @@ build\unkago /F:LZH x.lzh>>tests\results.txt
 echo --- unkago /Y>>tests\results.txt
 build\unkago /Y>>tests\results.txt
 
+echo --- unkago tests\unkago\multi0.lzh>>tests\results.txt
+build\unkago tests\unkago\multi0.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\nosuch.lzh>>tests\results.txt
+build\unkago /L tests\unkago\nosuch.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\multi0.lzh>>tests\results.txt
+build\unkago /L tests\unkago\multi0.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\multi1.lzh>>tests\results.txt
+build\unkago /L tests\unkago\multi1.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\multi2.lzh>>tests\results.txt
+build\unkago /L tests\unkago\multi2.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\l0lh1.lzh>>tests\results.txt
+build\unkago /L tests\unkago\l0lh1.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\l0lh7.lzh>>tests\results.txt
+build\unkago /L tests\unkago\l0lh7.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\l1lh5.lzh>>tests\results.txt
+build\unkago /L tests\unkago\l1lh5.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\l1lh6.lzh>>tests\results.txt
+build\unkago /L tests\unkago\l1lh6.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\l2lh5.lzh>>tests\results.txt
+build\unkago /L tests\unkago\l2lh5.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\l2lhx.lzh>>tests\results.txt
+build\unkago /L tests\unkago\l2lhx.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\l3lh5.lzh>>tests\results.txt
+build\unkago /L tests\unkago\l3lh5.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\badsum.lzh>>tests\results.txt
+build\unkago /L tests\unkago\badsum.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\cuthead.lzh>>tests\results.txt
+build\unkago /L tests\unkago\cuthead.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\cutdata.lzh>>tests\results.txt
+build\unkago /L tests\unkago\cutdata.lzh>>tests\results.txt
+echo --- unkago /L tests\unkago\notlzh.txt>>tests\results.txt
+build\unkago /L tests\unkago\notlzh.txt>>tests\results.txt
+echo --- unkago /L tests\unkago\empty.lzh>>tests\results.txt
+build\unkago /L tests\unkago\empty.lzh>>tests\results.txt
+
 echo === MAPTEST>>tests\results.txt
 echo --- maptest>>tests\results.txt
 build\maptest>>tests\results.txt

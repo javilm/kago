@@ -11,6 +11,8 @@
 		extrn	find_bad_switch
 		extrn	switch_given
 		extrn	safe_p2restore
+		extrn	first_argument
+		extrn	print_length
 
 		include	alloc.inc	; MapperHeap: heapinit, p2restore...
 
@@ -58,5 +60,28 @@ dos		macro	func
 print		macro	string
 		ld	de,string
 		dos	_STROUT
+		endm
+
+; printl - write a string given by its address and its length to
+; standard output.
+;
+;   For strings print cannot take: a name from an archive may hold a
+; "$". The length is any operand ld hl can take: a number, or a word
+; in memory, as in printl lzh_name,(lzh_name_length). It calls
+; print_length, in common.as.
+;
+; Input:	string = the address of the string
+;		length = its length, as an operand for ld hl
+; Output:	it is written to standard output
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+printl		macro	string,length
+		ld	de,string
+		ld	hl,length
+		call	print_length
 		endm
 

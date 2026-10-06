@@ -10,6 +10,8 @@
 		public	find_bad_switch
 		public	switch_given
 		public	safe_p2restore
+		public	first_argument
+		public	print_length
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	ascii.inc	; CHR_SPACE, CHR_TAB
@@ -18,6 +20,7 @@
 COMMAND_TAIL	equ	0081h		; the command line after the command
 					;   name, ending in 0, put here by
 					;   MSX-DOS2
+STDOUT		equ	1		; the standard output handle
 
 		cseg
 
@@ -179,6 +182,71 @@ skip_word:
 		ret	z
 		inc	de
 		jr	skip_word
+
+; first_argument - the first word on the command line that is not a
+;   switch: an archive's name, say.
+;
+;   Words are separated by spaces and tabs, and a word that starts with
+;   "/" is a switch and is skipped whole, as next_switch reads them.
+;
+; Input:	none
+; Output:	A = 0 when there is none; otherwise
+;		A = B = its length, 1 to 127
+;		HL -> its first character
+; Modifies:	AF
+;		B
+;		DE
+;		HL
+; Scratch:	none
+
+first_argument:
+		ld	de,COMMAND_TAIL
+first_argument.next:
+		ld	a,(de)
+		or	a
+		ret	z		; the end: none, A = 0
+		cp	CHR_SPACE
+		jr	z,first_argument.blank
+		cp	CHR_TAB
+		jr	z,first_argument.blank
+		cp	"/"
+		jr	z,first_argument.switch
+		ld	h,d		; HL -> the word
+		ld	l,e
+		call	skip_word	; DE -> just after it
+		ld	a,e
+		sub	l		; A = its length
+		ld	b,a
+		ret
+first_argument.switch:
+		call	skip_word
+		jr	first_argument.next
+first_argument.blank:
+		inc	de
+		jr	first_argument.next
+
+
+; print_length - write HL bytes from DE to standard output.
+;
+;   For a string that may hold a "$", such as a name from an archive,
+;   which print (common.inc) would cut short. The printl macro calls
+;   it. Through _WRITE on the standard output handle, after
+;   safe_p2restore, as the dos macro would do it.
+;
+; Input:	DE -> the bytes
+;		HL = how many
+; Output:	they are written to standard output
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+print_length:
+		ld	b,STDOUT
+		call	safe_p2restore	; keeps B, DE and HL
+		system	_WRITE
+		ret
 
 ; safe_p2restore - p2restore, keeping the registers it would destroy.
 ;
