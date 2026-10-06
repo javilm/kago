@@ -37,6 +37,13 @@
 ; already. MSX-DOS needs page 2 back for every call, which the dos macro
 ; gives it; after a read, the tables are mapped in again.
 ;
+; inflate.as decodes ZIP's deflate with this module's tables, window
+; and lh5_read: deflate's codes are built the same way, its distances
+; reach 32 KB as -lh6-'s do, and only its bit order and its blocks
+; differ. So window_start takes the bit order, and lh5_read gets its
+; symbols and distances through sym_vector and dist_vector: decode_c
+; and decode_p here, inflate.as's own for deflate.
+;
 ; The formats and the table builder follow LHa for UNIX 1.14i
 ; (reference/lha-unix: src/huf.c, maketbl.c, slide.c), checked step
 ; for step against lhasa through a Python model of this file.
@@ -46,11 +53,33 @@ LH5_INCLUDED	equ	1		; lh5.inc: not our names as extrn
 		public	lh5_start
 		public	lh5_read
 		public	lh5_finish
+		public	window_start
+		public	decode_sym
+		public	decode_pt
+		public	get_bits
+		public	fill_bits
+		public	make_table
+		public	bad_table
+		public	tables_in
+		public	tables
+		public	mt_n
+		public	mt_len
+		public	mt_bits
+		public	mt_table
+		public	c_len
+		public	pt_len
+		public	c_symbols
+		public	p_syms
+		public	lh5_error
+		public	bitcnt
+		public	sym_vector
+		public	dist_vector
 
 		include	common.inc	; dos, and MapperHeap's routines
 		include	farptr.inc	; fpalloc, derefp
 		include	lzh.inc		; lzh_read, lzh_skip_data
 		include	lh5.inc		; LH5_BAD
+		include	lh5share.inc	; C_TABLE, PT_TABLE
 
 		include	msxdos.inc	; BDOS, "system"
 		include	errors.inc	; .NORAM
@@ -66,9 +95,8 @@ SEG_MASK	equ	3Fh		; an offset's high byte, in a segment
 PAGE_TABLES	equ	4		; page2: the tables are mapped in
 PAGE_NONE	equ	0FFh		; page2: unknown, after MSX-DOS
 
-; The tables' block, mapped at "tables":
-C_TABLE		equ	0		; 4096 words: 12 bits to a symbol
-PT_TABLE	equ	8192		; 256 words: 8 bits to a symbol
+; The tables' block, mapped at "tables" (C_TABLE and PT_TABLE are in
+; lh5.inc, for inflate.as):
 LEFT		equ	8704		; 1019 words: the trees' 0 branches
 RIGHT		equ	10742		; 1019 words: their 1 branches
 TABLES_SIZE	equ	12780
@@ -85,9 +113,15 @@ ROW		equ	34		; mt_count, mt_weight, mt_start:
 ;   after. The ring starts empty, the bit reader is primed with 16 bits,
 ;   and the first lh5_read starts a block.
 ;
+;   lh5_start sets LHA's: the bits taken highest first, decode_c and
+;   decode_p, C_SYMS. window_start, its second entry, is the rest:
+;   inflate_start sets deflate's and calls it with -lh6-'s window.
+;
 ; Input:	B = the method's digit: "4" to "7"
 ;		DE -> the output buffer, 8 KB, below 8000h
 ;		lzh_packed (lzh.as): the size of the member's data
+;		window_start: C = fill_bits' bit order, SLA C's second
+;		byte (21h) or SRL C's (39h)
 ; Output:	A = 0, ready
 ;		A = .NORAM: no mapper memory for the tables or the window
 ; Modifies:	AF
@@ -97,6 +131,16 @@ ROW		equ	34		; mt_count, mt_weight, mt_start:
 ; Scratch:	none
 
 lh5_start:
+		ld	hl,decode_c	; LHA's symbols and distances
+		ld	(sym_vector),hl
+		ld	hl,decode_p
+		ld	(dist_vector),hl
+		ld	hl,C_SYMS
+		ld	(c_symbols),hl
+		ld	c,21h		; SLA C: the top bit first
+window_start:
+		ld	a,c		; fill_bits' bit order: its code
+		ld	(fill_bits.order+1),a	;   changed, written here
 		ld	(outbuf),de
 		ld	a,b		; its row in lh_methods
 		sub	"4"
@@ -196,7 +240,7 @@ lh5_read.next:
 		ld	a,h
 		or	l
 		jr	nz,lh5_read.copy	; a match not finished
-		call	decode_c	; HL = the symbol
+		call	next_symbol	; HL = the symbol
 		ld	a,h
 		or	a
 		jr	nz,lh5_read.match	; 256 and up
@@ -208,7 +252,7 @@ lh5_read.match:
 		or	a
 		sbc	hl,de
 		ld	(match_left),hl
-		call	decode_p	; HL = the distance, less 1
+		call	next_distance	; HL = the distance, less 1
 		ld	(match_dist),hl
 lh5_read.copy:
 		ld	hl,(match_left)
@@ -243,6 +287,22 @@ lh5_read.done:
 		ld	(part_len),hl
 		xor	a
 		ret
+
+; next_symbol, next_distance - the routines sym_vector and dist_vector
+;   name: decode_c and decode_p, or inflate.as's.
+;
+; Input:	sym_vector, dist_vector
+; Output:	as the routine's: HL = the symbol, or the distance less 1
+; Modifies:	as the routine's
+; Scratch:	none
+
+next_symbol:
+		ld	hl,(sym_vector)
+		jp	(hl)
+
+next_distance:
+		ld	hl,(dist_vector)
+		jp	(hl)
 
 ; put_byte - A at the buffer's pos, and pos one on.
 ;
@@ -471,7 +531,11 @@ map_window:
 ;   bottom, from the data.
 ;
 ;   The data comes a byte at a time, through bitsub, whose bitcnt bits
-;   not yet used are its top ones.
+;   not yet used are its top ones: SLA C takes them highest first, as
+;   LHA writes them. For deflate, which writes them lowest first,
+;   window_start makes it SRL C, and the bits are kept at the bottom.
+;   Either way the codes arrive in bitbuf first bit highest, so the
+;   tables serve both.
 ;
 ; Input:	B = how many, 0 to 16
 ; Output:	bitbuf
@@ -502,7 +566,8 @@ fill_bits.bit:
 		ld	c,a
 		ld	d,8
 fill_bits.have:
-		sla	c		; its top bit
+fill_bits.order:
+		sla	c		; its top bit; SRL C: its bottom one
 		adc	hl,hl		; into the bottom of bitbuf
 		dec	d
 		djnz	fill_bits.bit
@@ -625,9 +690,7 @@ get_bits:
 ; decode_c - the next literal or length symbol, 0 to 509.
 ;
 ;   A new block, when the last one is used up, starts with its size
-;   and its three tables. The symbol is c_table's entry for the next 12
-;   bits; one of C_SYMS and up is a tree's root, walked with the bits after
-;   them.
+;   and its three tables; then decode_sym.
 ;
 ; Input:	the bit reader, the tables
 ; Output:	HL = the symbol
@@ -647,24 +710,40 @@ decode_c:
 		call	z,read_block
 		ld	hl,(blocksize)
 		dec	hl
-		ld	(blocksize),hl
+		ld	(blocksize),hl	; and on into decode_sym
+
+; decode_sym - the next symbol through c_table, its code taken.
+;
+;   The symbol is c_table's entry for the next 12 bits; one of c_symbols
+;   and up is a tree's root, walked with the bits after them. Public:
+;   inflate.as decodes deflate's literals and lengths with it.
+;
+; Input:	the bit reader, the tables mapped; c_symbols, c_len
+; Output:	HL = the symbol
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+decode_sym:
 		ld	hl,(bitbuf)	; the next 12 bits
 		ld	b,4
-decode_c.shift:
+decode_sym.shift:
 		srl	h
 		rr	l
-		djnz	decode_c.shift
+		djnz	decode_sym.shift
 		add	hl,hl		; a word each
 		ld	de,(tables)	; C_TABLE is at 0
 		add	hl,de
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)		; DE = the entry
-		ld	hl,C_SYMS-1
+		ld	hl,(c_symbols)
+		dec	hl
 		or	a
 		sbc	hl,de
-		jr	c,decode_c.tree	; C_SYMS and up: a tree
-decode_c.length:
+		jr	c,decode_sym.tree	; c_symbols and up: a tree
 		ld	hl,c_len
 		add	hl,de
 		ld	b,(hl)
@@ -672,12 +751,12 @@ decode_c.length:
 		call	fill_bits	; the code's bits, taken
 		pop	hl
 		ret
-decode_c.tree:
+decode_sym.tree:
 		push	de
 		ld	b,12
 		call	fill_bits
 		pop	de
-		ld	hl,C_SYMS
+		ld	hl,(c_symbols)
 		ld	bc,8000h
 		call	tree_walk	; DE = the symbol
 		ld	hl,c_len
@@ -692,9 +771,8 @@ decode_c.tree:
 
 ; decode_p - the next match's distance, less 1: 0 to 65535.
 ;
-;   The symbol, through pt_table and the next 8 bits, is how many bits
-;   the distance has; its top bit is always 1, so it is not sent, and
-;   the rest follow.
+;   The symbol, through decode_pt, is how many bits the distance has;
+;   its top bit is always 1, so it is not sent, and the rest follow.
 ;
 ; Input:	the bit reader, the tables
 ; Output:	HL = the distance, less 1
@@ -705,48 +783,7 @@ decode_c.tree:
 ; Scratch:	none
 
 decode_p:
-		call	tables_in
-		ld	a,(bitbuf+1)	; the next 8 bits
-		ld	l,a
-		ld	h,0
-		add	hl,hl
-		ld	de,(tables)
-		add	hl,de
-		ld	de,PT_TABLE
-		add	hl,de
-		ld	e,(hl)
-		inc	hl
-		ld	d,(hl)		; DE = the entry
-		ld	a,(p_syms)
-		ld	l,a
-		ld	h,0
-		dec	hl
-		or	a
-		sbc	hl,de
-		jr	nc,decode_p.length
-		push	de		; p_syms and up: a tree
-		ld	b,8
-		call	fill_bits
-		pop	de
-		ld	a,(p_syms)
-		ld	l,a
-		ld	h,0
-		ld	bc,8000h
-		call	tree_walk
-		ld	hl,pt_len
-		add	hl,de
-		ld	a,(hl)
-		sub	8
-		jr	decode_p.take
-decode_p.length:
-		ld	hl,pt_len
-		add	hl,de
-		ld	a,(hl)
-decode_p.take:
-		ld	b,a
-		push	de
-		call	fill_bits
-		pop	de		; E = the symbol
+		call	decode_pt	; E = the symbol
 		ld	a,e
 		or	a
 		ld	h,a
@@ -766,6 +803,65 @@ decode_p.bits:
 		call	get_bits
 		pop	de
 		add	hl,de
+		ret
+
+; decode_pt - the next symbol through pt_table, its code taken.
+;
+;   The symbol is pt_table's entry for the next 8 bits; one of p_syms
+;   and up is a tree's root. Public: inflate.as decodes deflate's
+;   distances and code lengths with it.
+;
+; Input:	the bit reader; p_syms, pt_len
+; Output:	DE = the symbol
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+decode_pt:
+		call	tables_in
+		ld	a,(bitbuf+1)	; the next 8 bits
+		ld	l,a
+		ld	h,0
+		add	hl,hl
+		ld	de,(tables)
+		add	hl,de
+		ld	de,PT_TABLE
+		add	hl,de
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)		; DE = the entry
+		ld	a,(p_syms)
+		ld	l,a
+		ld	h,0
+		dec	hl
+		or	a
+		sbc	hl,de
+		jr	nc,decode_pt.length
+		push	de		; p_syms and up: a tree
+		ld	b,8
+		call	fill_bits
+		pop	de
+		ld	a,(p_syms)
+		ld	l,a
+		ld	h,0
+		ld	bc,8000h
+		call	tree_walk
+		ld	hl,pt_len
+		add	hl,de
+		ld	a,(hl)
+		sub	8
+		jr	decode_pt.take
+decode_pt.length:
+		ld	hl,pt_len
+		add	hl,de
+		ld	a,(hl)
+decode_pt.take:
+		ld	b,a
+		push	de
+		call	fill_bits
+		pop	de
 		ret
 
 ; tree_walk - from a tree's root to its symbol, a bit at a time.
@@ -1559,6 +1655,11 @@ lh_methods:	defb	14,4
 ; p_syms, p_bits, win_mask, win_segs
 ;			the method's: kinds of distance, the bits that
 ;			count them, the ring's size less 1, its segments
+; c_symbols		the literal and length symbols: C_SYMS, or
+;			deflate's 288; their tree roots start there
+; sym_vector, dist_vector
+;			lh5_read's symbols and distances: decode_c and
+;			decode_p, or inflate.as's
 ; win_head		where the ring's next byte goes
 ; wrapped		not 0 once the ring has wrapped
 ; part_len		the part in the buffer, not yet in the ring
@@ -1604,6 +1705,9 @@ p_syms:		defs	1
 p_bits:		defs	1
 win_mask:	defs	2
 win_segs:	defs	1
+c_symbols:		defs	2
+sym_vector:	defs	2
+dist_vector:	defs	2
 win_head:	defs	2
 wrapped:	defs	1
 part_len:	defs	2

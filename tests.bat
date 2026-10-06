@@ -282,6 +282,19 @@ cd ..\..
 dir tests\out\zip\ztree>>tests\dates.txt
 dir /h tests\out\zip>>tests\dates.txt
 
+rem INFLATE runs in TESTS\OUT and extracts into TESTS\OUT\INFL:
+rem deflate's fixed and stored blocks, an empty stored block between
+rem two fixed ones, and a match 32000 bytes back.
+echo === UNKAGO INFLATE>>tests\results.txt
+cd tests\out
+echo --- unkago /O /D:infl ..\unkago\zfixed.zip>>..\results.txt
+..\..\build\unkago /O /D:infl ..\unkago\zfixed.zip>>..\results.txt
+echo --- unkago /O /D:infl ..\unkago\zstore.zip>>..\results.txt
+..\..\build\unkago /O /D:infl ..\unkago\zstore.zip>>..\results.txt
+echo --- unkago /O /D:infl ..\unkago\zflush.zip>>..\results.txt
+..\..\build\unkago /O /D:infl ..\unkago\zflush.zip>>..\results.txt
+cd ..\..
+
 rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
 rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves
 rem too little, and UNKAGO must refuse; with more memory it extracts.

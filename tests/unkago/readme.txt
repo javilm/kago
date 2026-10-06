@@ -201,6 +201,19 @@ zbadcrc.zip
     the same, BAD.TXT, one byte of its data changed after the CRC-32
     was taken
     sha256 805f006615bbbc1129bd6d5182151a1a861650cd3be69bca347c6e54d85bf333
+zfixed.zip
+    made for Tsuzura with Python's zipfile and zlib (note 017), deflate
+    in fixed-Huffman blocks only: WORDS.TXT, 45578 bytes of words;
+    FAR.DAT, 38000 bytes with a match 32000 back; ONE.TXT, one byte
+    sha256 32adf544eafc0491da8130c25fc75b87c863104e664c5275bd4d781f572491b3
+zstore.zip
+    the same, zlib level 0: NOISE.DAT, 70000 random bytes in two stored
+    blocks
+    sha256 cf2068f42a3df8d5c77bbe9d8e8cc89e7a3f242a2ba2f9bbee1fba131e34376e
+zflush.zip
+    the same, WORDS.TXT in fixed blocks, with an empty stored block
+    (zlib's full flush) half way
+    sha256 d299adddf2cc3c932dbd553af2e3e41abe51e1677f16e5ebec7213118f6b2043
 
 The archives from lhasa are distributed under its licence:
 

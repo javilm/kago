@@ -1,6 +1,6 @@
 ; unkago.as - UNKAGO, the decompressor: it lists LZH and ZIP archives,
 ; and extracts LZH's stored and -lh4- to -lh7- members and ZIP's stored
-; ones.
+; and deflate ones (lh5.as, inflate.as).
 ;
 ; It checks for MSX-DOS2 and the command line. The archive's first bytes
 ; tell its format (open_archive): ZIP's are read by zip.as, LZH's by
@@ -23,6 +23,7 @@
 		include	lh5.inc		; lh5.as: the -lh5- decoder
 		include	names.inc	; names.as: the MSX-DOS names
 		include	zip.inc		; zip.as: reading ZIP archives
+		include	inflate.inc	; inflate.as: deflate
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .DKFUL...
@@ -486,10 +487,17 @@ extract_member.sized:
 		ld	(remaining),hl
 		ld	(remaining+2),de
 		jr	z,extract_member.copy	; -lh0-: Z still from the CP
+		ld	de,copy_buffer	; the output buffer
+		ld	a,(archive_format)	; ZIP: deflate
+		or	a
+		jr	nz,extract_member.inflate
 		ld	a,(member_kind)	; B = the method's digit
 		ld	b,a
-		ld	de,copy_buffer	; the output buffer
 		call	lh5_start	; A = 0, or .NORAM
+		jr	extract_member.started
+extract_member.inflate:
+		call	inflate_start	; A = 0, or .NORAM
+extract_member.started:
 		or	a
 		jp	nz,extract_member.failed
 extract_member.copy:
@@ -602,8 +610,9 @@ extract_member.discard:
 
 ; member_supported - whether the member just read is one UNKAGO
 ;   extracts: -lh0- (stored), -lh4- to -lh7-, or -lhd- (a directory).
-;   Of a ZIP archive's, its directories and its stored members, which
-;   are extracted as -lh0- ones; not an encrypted one.
+;   Of a ZIP archive's, its directories and its stored and deflate
+;   members: stored ones as -lh0-, deflate ones with -lh6-'s window
+;   ("6", for the memory check); not an encrypted one.
 ;
 ; Input:	lzh_method, lzh_dir (lzh.as); zip_method, zip_flags;
 ;		archive_format
@@ -626,10 +635,14 @@ member_supported:
 		ld	a,(zip_flags)	; encrypted: no
 		rrca
 		jr	c,member_supported.no
-		ld	a,(zip_method)	; "stored ": as -lh0-; nothing else yet
+		ld	a,(zip_method)	; "stored ": as -lh0-
 		cp	"s"
-		jr	nz,member_supported.no
 		ld	a,"0"
+		jr	z,member_supported.zip
+		ld	a,(zip_method)	; "deflate": -lh6-'s window
+		cp	"d"
+		jr	nz,member_supported.no
+		ld	a,"6"
 member_supported.zip:
 		ld	(member_kind),a
 		xor	a		; Z set
