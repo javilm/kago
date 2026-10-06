@@ -1,20 +1,21 @@
 ; unkago.as - UNKAGO, the decompressor: it lists LZH and ZIP archives,
-; and extracts LZH's stored and -lh4- to -lh7- members.
+; and extracts LZH's stored and -lh4- to -lh7- members and ZIP's stored
+; ones.
 ;
 ; It checks for MSX-DOS2 and the command line. The archive's first bytes
 ; tell its format (open_archive): ZIP's are read by zip.as, LZH's by
 ; lzh.as, into the same variables. With /L it lists the members: sizes,
 ; method, date and path, one line each, and the totals. Without it, it
-; extracts the -lh0- (stored) and -lh4- to -lh7- (lh5.as) members into
-; the current directory, or the one /D: names, checking first that they
-; fit on the disk and their windows in the mapper, and then each one's
-; CRC-16. The directories in the members' paths are made as they are
-; needed, and -lhd- members make theirs and give them their dates; a
-; part of a path that does not fit 8.3 is shortened the VFAT way
-; (names.as). Names after the archive's, with * and ?, choose the
-; members, for listing and extracting alike; a directory's name chooses
-; what is under it. On the screen, each member's line shows how far
-; through it UNKAGO is.
+; extracts the members it has the method for into the current
+; directory, or the one /D: names, checking first that they fit on the
+; disk and their windows in the mapper, and then each one's CRC: CRC-16
+; for LZH, CRC-32 for ZIP. The directories in the members' paths are
+; made as they are needed, and directory members make theirs and give
+; them their dates; a part of a path that does not fit 8.3 is shortened
+; the VFAT way (names.as). Names after the archive's, with * and ?,
+; choose the members, for listing and extracting alike; a directory's
+; name chooses what is under it. On the screen, each member's line shows
+; how far through it UNKAGO is.
 
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
@@ -351,7 +352,7 @@ extract_archive:
 		or	a
 		jp	nz,report_stop
 		call	progress_init	; on the screen, not with /Q
-		call	crc_init
+		call	crc_tables	; CRC-16's, or CRC-32's
 		ld	hl,0
 		ld	(members),hl
 extract_archive.next:
@@ -369,22 +370,23 @@ extract_archive.next:
 ; extract_member - extract, or skip, the member just read.
 ;
 ;   A member not asked for is passed over without a line, and one
-;   whose method UNKAGO does not have gets a line saying so. The
-;   directories in the member's path are made first (member_dirs); one
-;   that cannot be skips the member, with MSX-DOS2's reason. A -lhd-
-;   member is a directory: made, it is given its date and its hidden
-;   attribute, whether it was there already or not. The file,
-;   out_name, is created with _CREATE's "create
-;   new" flag unless /O was given, so an existing file is never replaced
-;   by accident: MSX-DOS2 refuses with .FILEX. The data is copied
-;   through copy_buffer, COPY_SIZE bytes at a time, its CRC-16 computed
-;   on the way; the file is closed, and only then are its date and
-;   attributes set (closing a written file gives it the current date).
-;   On the screen the line shows the percentage as the data is copied
-;   (progress_start, progress_update), cleared before the last word
-;   (progress_end). A CRC that does not match deletes the file. A full
-;   disk or root
-;   directory stops, where any other refusal to create only skips.
+;   whose method UNKAGO does not have gets a line saying so; an
+;   encrypted ZIP member's says that instead. The directories in the
+;   member's path are made first (member_dirs); one that cannot be skips
+;   the member, with MSX-DOS2's reason. A directory member is made, and
+;   given its date and its hidden attribute, whether it was there
+;   already or not. A ZIP member's local header is read next (zip_data),
+;   so that a damaged one stops before anything is created. The file,
+;   out_name, is created with _CREATE's "create new" flag unless /O was
+;   given, so an existing file is never replaced by accident: MSX-DOS2
+;   refuses with .FILEX. The data is copied through copy_buffer,
+;   COPY_SIZE bytes at a time, its CRC computed on the way (crc_add);
+;   the file is closed, and only then are its date and attributes set
+;   (closing a written file gives it the current date). On the screen
+;   the line shows the percentage as the data is copied (progress_start,
+;   progress_update), cleared before the last word (progress_end). A CRC
+;   that does not match deletes the file. A full disk or root directory
+;   stops, where any other refusal to create only skips.
 ;
 ; Input:	lzh.as's variables: the member just read
 ;		overwrite: not 0 for /O
@@ -407,6 +409,11 @@ extract_member:
 		ld	a,(member_kind)
 		cp	"d"
 		jp	z,extract_member.directory
+		ld	a,(archive_format)	; ZIP: to the data, past
+		or	a		;   the local header
+		call	nz,zip_data	; A = 0, or what stops it
+		or	a
+		ret	nz
 		ld	a,(overwrite)	; B = 80h: create new, unless /O
 		cpl
 		and	80h
@@ -448,6 +455,15 @@ extract_member.directory:
 extract_member.unsupported:
 		print	msg_skipping
 		call	print_path
+		ld	a,(archive_format)	; encrypted ZIP: say so
+		or	a
+		jr	z,extract_member.method
+		ld	a,(zip_flags)
+		rrca
+		jr	nc,extract_member.method
+		print	msg_encrypted
+		jp	skip_member
+extract_member.method:
 		print	msg_colon
 		call	print_method
 		print	msg_not_yet
@@ -458,8 +474,7 @@ extract_member.created:
 		print	msg_extracting
 		call	print_target
 		call	progress_start	; "   0%", on the screen
-		ld	hl,0
-		ld	(crc_value),hl
+		call	crc_start
 		ld	hl,(lzh_packed)	; -lh0-: the data's size
 		ld	de,(lzh_packed+2)
 		ld	a,(member_kind)
@@ -508,7 +523,7 @@ extract_member.read:
 		jp	nz,extract_member.not_read	; too far for jr
 		ld	de,copy_buffer
 		ld	bc,(chunk)
-		call	crc_update
+		call	crc_add
 		ld	a,(out_handle)
 		ld	b,a
 		ld	de,copy_buffer
@@ -543,10 +558,7 @@ extract_member.close:
 		or	a
 		jr	nz,extract_member.failed_closed
 		call	progress_end	; the number off the line
-		ld	hl,(crc_value)
-		ld	de,(lzh_crc)
-		or	a
-		sbc	hl,de
+		call	crc_check	; Z: it matches
 		jr	nz,extract_member.crc_error
 		call	set_date_attributes
 		print	msg_ok
@@ -590,9 +602,11 @@ extract_member.discard:
 
 ; member_supported - whether the member just read is one UNKAGO
 ;   extracts: -lh0- (stored), -lh4- to -lh7-, or -lhd- (a directory).
-;   Of a ZIP archive's, only its directories, so far.
+;   Of a ZIP archive's, its directories and its stored members, which
+;   are extracted as -lh0- ones; not an encrypted one.
 ;
-; Input:	lzh_method, lzh_dir (lzh.as); archive_format
+; Input:	lzh_method, lzh_dir (lzh.as); zip_method, zip_flags;
+;		archive_format
 ; Output:	Z set = it is
 ;		member_kind = the method's digit
 ; Modifies:	AF
@@ -605,10 +619,18 @@ member_supported:
 		ld	a,(archive_format)
 		or	a
 		jr	z,member_supported.lzh
-		ld	a,(lzh_dir)	; ZIP: a directory, or not yet
+		ld	a,(lzh_dir)	; ZIP: a directory
 		or	a
-		jr	z,member_supported.no
 		ld	a,"d"
+		jr	nz,member_supported.zip
+		ld	a,(zip_flags)	; encrypted: no
+		rrca
+		jr	c,member_supported.no
+		ld	a,(zip_method)	; "stored ": as -lh0-; nothing else yet
+		cp	"s"
+		jr	nz,member_supported.no
+		ld	a,"0"
+member_supported.zip:
 		ld	(member_kind),a
 		xor	a		; Z set
 		ret
@@ -2016,6 +2038,71 @@ print_target:
 		print	msg_separator
 		ret
 
+; crc_tables, crc_start, crc_add, crc_check - the member's CRC, by
+;   archive_format: CRC-16 for LZH, CRC-32 for ZIP.
+;
+;   crc_tables builds the table, once; crc_start starts a member's CRC
+;   (0 for CRC-16, 0FFFFFFFFh for CRC-32); crc_add adds BC bytes at DE;
+;   crc_check compares it with the header's (CRC-32's complemented).
+;
+; Input:	archive_format; lzh_crc, zip_crc
+; Output:	crc_check: Z set = it matches
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+crc_tables:
+		ld	a,(archive_format)
+		or	a
+		jp	z,crc_init
+		jp	crc32_init
+
+crc_start:
+		ld	a,(archive_format)
+		or	a
+		ld	hl,0
+		jr	z,crc_start.lzh
+		dec	hl		; 0FFFFh
+		ld	(crc32_value),hl
+		ld	(crc32_value+2),hl
+		ret
+crc_start.lzh:
+		ld	(crc_value),hl
+		ret
+
+crc_add:
+		ld	a,(archive_format)
+		or	a
+		jp	z,crc_update
+		jp	crc32_update
+
+crc_check:
+		ld	a,(archive_format)
+		or	a
+		jr	nz,crc_check.zip
+		ld	hl,(crc_value)
+		ld	de,(lzh_crc)
+		or	a
+		sbc	hl,de
+		ret
+crc_check.zip:
+		ld	hl,crc32_value	; its complement, byte by byte
+		ld	de,zip_crc
+		ld	b,4
+crc_check.byte:
+		ld	a,(hl)
+		cpl
+		ex	de,hl
+		cp	(hl)
+		ex	de,hl
+		ret	nz
+		inc	hl
+		inc	de
+		djnz	crc_check.byte
+		ret			; Z set
+
 ; print_method - the member's method, for "not supported yet": LZH's
 ;   5 characters, or ZIP's name without the spaces after it.
 ;
@@ -2450,7 +2537,7 @@ print_totals.word:
 ; msg_files		after any other count
 ; month_lengths		the days in each month, February at 28
 ; msg_extracting, msg_skipping, msg_ok, msg_crc_error, msg_exists,
-; msg_colon, msg_not_yet, msg_separator, msg_as
+; msg_colon, msg_not_yet, msg_separator, msg_as, msg_encrypted
 ;			extracting's words, put together per member
 ; method_lh0		the one method extracted in this phase
 ; msg_space_need, msg_space_free, msg_space_on, msg_space_drive
@@ -2547,6 +2634,7 @@ msg_colon:	defb	": $"
 msg_separator:	defb	PATH_SEPARATOR,"$"
 msg_as:		defb	" as $"
 msg_not_yet:	defb	" is not supported yet",CHR_CR,CHR_LF,"$"
+msg_encrypted:	defb	": it is encrypted",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
 msg_space_need:	defb	"Extracting this archive would take $"
 msg_space_free:	defb	" on disk, but only $"

@@ -665,7 +665,8 @@ basis_char.pair:
 
 ; vfat_char - a character as it goes into a short name: upper case, as
 ;   MSX-DOS2's language has it, or "_" for one MSX-DOS2 does not take in
-;   a name and for VFAT's + , ; = [ ].
+;   a name and for VFAT's + , ; = [ ] and Windows' * ? < > | : ",
+;   which _CHKCHR may pass: it passed ? on note 016's first run.
 ;
 ; Input:	A = the character, not a space, period or lead byte
 ; Output:	A = what goes in
@@ -677,7 +678,7 @@ vfat_char:
 		push	bc
 		push	hl
 		ld	hl,vfat_bad
-		ld	bc,6
+		ld	bc,13
 		cpir			; Z: one of them
 		jr	z,vfat_char.bad
 		push	de
@@ -1096,9 +1097,10 @@ scan_next:
 
 ; Constants for the routines above:
 ;
-; vfat_bad		the characters VFAT does not keep in a short name
+; vfat_bad		the characters VFAT does not keep in a short name,
+;			13 of them
 ;
-vfat_bad:	defb	"+,;=[]"
+vfat_bad:	defb	"+,;=[]*?<>|:",22h
 
 		dseg
 

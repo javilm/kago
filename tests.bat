@@ -242,9 +242,13 @@ dir tests\out\lfn\longdi~1>>tests\dates.txt
 
 rem ZIP runs in TESTS\OUT and extracts into TESTS\OUT\ZIP: listings of
 rem ZIP archives, stored and deflate, with a comment, with UTF-8 names,
-rem empty, and ZIP64; and the directories of a ZIP tree, made, its
-rem files not yet extracted. What ZIP holds goes into TESTS\DATES.TXT.
+rem empty, and ZIP64; then their stored members extracted, a deflated
+rem one skipped, an encrypted one refused, sizes after the data, and a
+rem CRC error. RO.TXT is left read-only, so it is made writable first,
+rem for /O to replace it. What ZIP holds, the hidden DOS.TXT included,
+rem goes into TESTS\DATES.TXT.
 echo === UNKAGO ZIP>>tests\results.txt
+attrib -r tests\out\zip\ztree\ro.txt
 cd tests\out
 echo --- unkago /L ..\unkago\ztree.zip>>..\results.txt
 ..\..\build\unkago /L ..\unkago\ztree.zip>>..\results.txt
@@ -262,12 +266,21 @@ echo --- unkago /O /D:zip ..\unkago\ztree.zip>>..\results.txt
 ..\..\build\unkago /O /D:zip ..\unkago\ztree.zip>>..\results.txt
 echo --- unkago /O /D:zip ..\unkago\zutf8.zip>>..\results.txt
 ..\..\build\unkago /O /D:zip ..\unkago\zutf8.zip>>..\results.txt
+echo --- unkago /O /D:zip ..\unkago\zdefl.zip>>..\results.txt
+..\..\build\unkago /O /D:zip ..\unkago\zdefl.zip>>..\results.txt
+echo --- unkago /O /D:zip ..\unkago\zenc.zip>>..\results.txt
+..\..\build\unkago /O /D:zip ..\unkago\zenc.zip>>..\results.txt
+echo --- unkago /O /D:zip ..\unkago\zdesc.zip>>..\results.txt
+..\..\build\unkago /O /D:zip ..\unkago\zdesc.zip>>..\results.txt
+echo --- unkago /O /D:zip ..\unkago\zbadcrc.zip>>..\results.txt
+..\..\build\unkago /O /D:zip ..\unkago\zbadcrc.zip>>..\results.txt
 echo --- unkago /D:zip ..\unkago\zempty.zip>>..\results.txt
 ..\..\build\unkago /D:zip ..\unkago\zempty.zip>>..\results.txt
 echo --- unkago /D:zip ..\unkago\z64.zip>>..\results.txt
 ..\..\build\unkago /D:zip ..\unkago\z64.zip>>..\results.txt
 cd ..\..
 dir tests\out\zip\ztree>>tests\dates.txt
+dir /h tests\out\zip>>tests\dates.txt
 
 rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
 rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves

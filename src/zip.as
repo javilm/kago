@@ -29,6 +29,8 @@ ZIP_INCLUDED	equ	1		; zip.inc: not our names as extrn
 		public	zip_method
 		public	zip_crc
 		public	zip_local
+		public	zip_flags
+		public	zip_data
 
 		include	zip.inc		; ZIP_SPLIT
 		include	lzh.inc		; the member's variables, lzh_read,
@@ -39,6 +41,7 @@ ZIP_INCLUDED	equ	1		; zip.inc: not our names as extrn
 SEARCH_SIZE	equ	8192		; where the end record is looked for
 EOCD_SIZE	equ	22		; the end record, without its comment
 CDH_SIZE	equ	46		; a central header, without its name
+LFH_SIZE	equ	30		; a local header, without its name
 
 		cseg
 
@@ -227,7 +230,8 @@ zip_skip:
 ;   path; lzh_packed and lzh_original, the sizes; lzh_time, MS-DOS's
 ;   time and date words, with lzh_level 0, as for a level 0 header;
 ;   lzh_attributes; lzh_dir. zip_method is the method's name, zip_crc
-;   the CRC-32 and zip_local where the local header is.
+;   the CRC-32, zip_local where the local header is and zip_flags the
+;   flags' low byte.
 ;
 ;   A name ending in "/" is a directory. The attributes are MS-DOS's,
 ;   the low byte of the external attributes, unless the archive was
@@ -317,6 +321,8 @@ zip_next.named:
 		ld	de,lzh_packed
 		ld	bc,8
 		ldir
+		ld	a,(zip_header+8)	; the flags: bit 0, encrypted
+		ld	(zip_flags),a
 		ld	hl,zip_header+42	; the local header
 		ld	de,zip_local
 		ld	bc,4
@@ -361,6 +367,58 @@ zip_next.split:
 		ret
 zip_next.damaged:
 		ld	a,LZH_DAMAGED
+		ret
+
+; zip_data - to the member's data: past its local header.
+;
+;   The local header repeats much of the central one, but its name and
+;   extra field need not be as long, so their lengths are read from it.
+;   The sizes are the central header's: the local one may hold 0, with
+;   the real ones after the data.
+;
+; Input:	zip_local
+; Output:	A = 0, the archive at the member's data
+;		A = LZH_DAMAGED: no local header there
+;		A = LZH_TRUNCATED, or an MSX-DOS error code
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+zip_data:
+		ld	hl,(zip_local)
+		ld	de,(zip_local+2)
+		xor	a		; from the start
+		call	lzh_seek
+		or	a
+		ret	nz
+		ld	de,local_header
+		ld	hl,LFH_SIZE
+		call	lzh_read
+		or	a
+		ret	nz
+		ld	hl,local_header	; "PK" 3 4
+		ld	de,lfh_signature
+		ld	b,4
+zip_data.sig:
+		ld	a,(de)
+		cp	(hl)
+		ld	a,LZH_DAMAGED
+		ret	nz
+		inc	hl
+		inc	de
+		djnz	zip_data.sig
+		ld	hl,(local_header+26)	; past its name and extra field
+		ld	de,(local_header+28)
+		add	hl,de
+		ld	de,0
+		jr	nc,zip_data.seek
+		inc	de
+zip_data.seek:
+		ld	a,1		; from here
+		call	lzh_seek
+		or	a
 		ret
 
 ; cd_add - HL bytes more to cd_next.
@@ -502,10 +560,12 @@ utf8_name.next:
 ; Constants for the routines above:
 ;
 ; cdh_signature		a central header's first 4 bytes
+; lfh_signature		a local header's
 ; text_stored, text_deflate
 ;			the two methods' names, 7 characters
 ;
 cdh_signature:	defb	"PK",1,2
+lfh_signature:	defb	"PK",3,4
 text_stored:	defb	"stored "
 text_deflate:	defb	"deflate"
 
@@ -516,6 +576,8 @@ text_deflate:	defb	"deflate"
 ; zip_method		the member's method, 7 characters
 ; zip_crc		its CRC-32, 4 bytes
 ; zip_local		where its local header is, 4 bytes
+; zip_flags		its flags' low byte: bit 0, encrypted
+; local_header		zip_data: the local header, 30 bytes
 ; zip_header		the central header just read: 46 bytes
 ; zip_total		the members in the directory
 ; zip_left		those not read yet
@@ -528,6 +590,8 @@ text_deflate:	defb	"deflate"
 zip_method:	defs	7
 zip_crc:	defs	4
 zip_local:	defs	4
+zip_flags:	defs	1
+local_header:	defs	LFH_SIZE
 zip_header:	defs	CDH_SIZE
 zip_total:	defs	2
 zip_left:	defs	2

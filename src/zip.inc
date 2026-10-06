@@ -17,5 +17,7 @@ ZIP_SPLIT	equ	6		; ZIP64, or a split archive: not
 		extrn	zip_method	; its method's name, 7 characters
 		extrn	zip_crc		; its CRC-32, 4 bytes
 		extrn	zip_local	; where its local header is
+		extrn	zip_flags	; its flags: bit 0, encrypted
+		extrn	zip_data	; to its data, past its local header
 		endif
 

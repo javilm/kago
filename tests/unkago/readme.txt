@@ -178,16 +178,29 @@ zcomm.zip
     the same archive, with an archive comment added (zip -z)
     sha256 d008a3ced1c9515e5776095dcbaa667b6dbbc710d03c516818d5ac1b386993c0
 zutf8.zip
-    made for Tsuzura with Python's zipfile (note 015), stored, "made on
-    MS-DOS": cafe.txt with an acute e and a name in Japanese, both
-    flagged UTF-8; DOS.TXT, read-only and hidden
-    sha256 ee02cb2f1d18b038f8c6f14c44458fe3cc1c7694fa184a6f917b5706f408a08b
+    made for Tsuzura with Python's zipfile (notes 015, 016), stored,
+    "made on MS-DOS": cafe.txt with an acute e and a name in Japanese,
+    both flagged UTF-8; DOS.TXT, hidden (note 016: no longer read-only,
+    which a second run's /O could not replace)
+    sha256 fb74140efe070efa669028daa00d92a893feb75a96915c5650f44e6926b0e279
 zempty.zip
     the same, with no members: the end record alone, 22 bytes
     sha256 8739c76e681f900923b900c9df0ef75cf421d39cabb54650c4b9ad19b6a76d85
 z64.zip
     Info-ZIP's zip -0 -fz: ZTREE\A.TXT in a ZIP64 archive
     sha256 41768f7dd11a4d2f4c88d7b4ba7b5537a22c4678f6bcbe7a7bc2f0dbea0ca9cb
+zenc.zip
+    Info-ZIP's zip -0 -P x: SECRET.TXT, encrypted
+    sha256 6d8a26095a37ce30c43cbd2bfad7248868e2a6b4af63d3c81658c34b721e49d6
+zdesc.zip
+    made for Tsuzura with Python's zipfile (note 016), written where it
+    cannot seek: DESC.TXT, stored, its sizes and CRC in a data
+    descriptor after the data, 0 in its local header
+    sha256 1021c1878e3924af8a9db7026bcaa1683ae55fc8f9a15134fe2f922ab89750c6
+zbadcrc.zip
+    the same, BAD.TXT, one byte of its data changed after the CRC-32
+    was taken
+    sha256 805f006615bbbc1129bd6d5182151a1a861650cd3be69bca347c6e54d85bf333
 
 The archives from lhasa are distributed under its licence:
 

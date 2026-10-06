@@ -543,17 +543,26 @@ The archive is empty.
 ZIP64 and split archives are not read.
 --- unkago /O /D:zip ..\unkago\ztree.zip
 Extracting ztree\ OK
-Skipping ztree\ro.txt: stored is not supported yet
+Extracting ztree\ro.txt OK
 Extracting ztree\empty\ OK
 Extracting ztree\sub\ OK
-Skipping ztree\sub\b.txt: stored is not supported yet
+Extracting ztree\sub\b.txt OK
 Extracting ztree\sub\deep\ OK
-Skipping ztree\sub\deep\c.txt: stored is not supported yet
-Skipping ztree\a.txt: stored is not supported yet
+Extracting ztree\sub\deep\c.txt OK
+Extracting ztree\a.txt OK
 --- unkago /O /D:zip ..\unkago\zutf8.zip
-Skipping caf?.txt: stored is not supported yet
-Skipping ??\?.txt: stored is not supported yet
-Skipping dos.txt: stored is not supported yet
+Extracting caf?.txt as CAF_~1.TXT OK
+Extracting ??\?.txt as __~1\_~1.TXT OK
+Extracting dos.txt OK
+--- unkago /O /D:zip ..\unkago\zdefl.zip
+Skipping gpl.txt: deflate is not supported yet
+Extracting ztree\a.txt OK
+--- unkago /O /D:zip ..\unkago\zenc.zip
+Skipping secret.txt: it is encrypted
+--- unkago /O /D:zip ..\unkago\zdesc.zip
+Extracting desc.txt OK
+--- unkago /O /D:zip ..\unkago\zbadcrc.zip
+Extracting bad.txt CRC error
 --- unkago /D:zip ..\unkago\zempty.zip
 The archive is empty.
 --- unkago /D:zip ..\unkago\z64.zip
