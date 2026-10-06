@@ -12,6 +12,7 @@
 		public	switch_value
 		public	safe_p2restore
 		public	first_argument
+		public	skip_word
 		public	print_length
 		public	divide_by_c
 		public	format_padded

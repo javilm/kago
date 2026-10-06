@@ -5,7 +5,8 @@
 ; members of an LZH archive: sizes, method, date and name, one line
 ; each, and the totals. Without it, it extracts the -lh0- members into
 ; the current directory, or the one /D: names, checking first that they
-; fit and then each one's CRC-16.
+; fit and then each one's CRC-16. Names after the archive's, with * and
+; ?, choose the members, for listing and extracting alike.
 
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
@@ -33,7 +34,8 @@ PATH_SEPARATOR	equ	5Ch		; "\", the yen sign on a Japanese MSX
 ;   is listed; without /L it is extracted, /O allowing existing files
 ;   to be replaced, /D:path naming where to. With no archive named, /L
 ;   ends with .NOPAR (*** Missing parameter), and a line with neither
-;   prints the usage. A /D with no path ends with .NOPAR too.
+;   prints the usage. A /D with no path ends with .NOPAR too. The
+;   words after the archive that are not switches are member names.
 ;
 ; Input:	the command line, at COMMAND_TAIL (common.as)
 ; Output:	does not return
@@ -72,6 +74,7 @@ main.named:
 		ldir
 		xor	a
 		ld	(de),a
+		call	collect_names	; HL -> what follows it
 		ld	c,"L"
 		call	switch_given
 		jp	c,list_archive
@@ -114,6 +117,65 @@ main.need_dos2:
 		print	msg_need_dos2	; _STROUT: MSX-DOS1 has it too
 		dos	_TERM0		; function 00h, in MSX-DOS1 too
 
+; collect_names - the member names given after the archive's name.
+;
+;   Every word after the archive that is not a switch is one, up to the
+;   end of the line. Each is kept in name_list as a flag byte (0 until
+;   a member matches it), then the name, folded to upper case, and a 0.
+;   The command line holds at most 127 characters, so at most 64 names
+;   of one character each: 192 bytes.
+;
+; Input:	HL -> the command line just after the archive's name
+; Output:	name_list, name_count
+; Modifies:	AF
+;		DE
+;		HL
+; Scratch:	none
+
+collect_names:
+		ex	de,hl		; DE -> the line
+		ld	hl,name_list
+		xor	a
+		ld	(name_count),a
+collect_names.next:
+		ld	a,(de)
+		or	a
+		ret	z		; the end of the line
+		cp	CHR_SPACE
+		jr	z,collect_names.blank
+		cp	CHR_TAB
+		jr	z,collect_names.blank
+		cp	"/"
+		jr	nz,collect_names.word
+		call	skip_word	; a switch: not a name
+		jr	collect_names.next
+collect_names.blank:
+		inc	de
+		jr	collect_names.next
+collect_names.word:
+		ld	(hl),0		; not matched yet
+		inc	hl
+collect_names.char:
+		ld	a,(de)
+		or	a
+		jr	z,collect_names.ended
+		cp	CHR_SPACE
+		jr	z,collect_names.ended
+		cp	CHR_TAB
+		jr	z,collect_names.ended
+		call	fold_case
+		ld	(hl),a
+		inc	hl
+		inc	de
+		jr	collect_names.char
+collect_names.ended:
+		ld	(hl),0
+		inc	hl
+		ld	a,(name_count)
+		inc	a
+		ld	(name_count),a
+		jr	collect_names.next
+
 ; list_archive - list the members of the archive named in
 ;   archive_name: a line for each, and the totals.
 ;
@@ -125,7 +187,13 @@ main.need_dos2:
 ;   member could be read is not an LZH archive, unless the first
 ;   header is level 3: that is one, and the level is what is reported.
 ;
+;   With member names given, only the members they match are listed
+;   and added up; the heading comes with the first of them, and with
+;   none there are no totals. Either way, a name that matched nothing
+;   is reported at the end.
+;
 ; Input:	archive_name: the archive's name, zero-terminated
+;		name_list, name_count: the member names given
 ; Output:	does not return
 ; Modifies:	everything
 ; Scratch:	none
@@ -139,6 +207,7 @@ list_archive:
 		ld	(listing),a	; report_stop: totals
 		ld	hl,0
 		ld	(members),hl
+		ld	(listed),hl
 		ld	(total_packed),hl
 		ld	(total_packed+2),hl
 		ld	(total_original),hl
@@ -147,7 +216,12 @@ list_archive.next:
 		call	lzh_next_header
 		or	a
 		jr	nz,list_archive.stop
-		ld	hl,(members)
+		ld	hl,(members)	; read, asked for or not
+		inc	hl
+		ld	(members),hl
+		call	member_selected	; Z: list it
+		jr	nz,list_archive.skip
+		ld	hl,(listed)
 		ld	a,h
 		or	l
 		jr	nz,list_archive.headed
@@ -155,9 +229,10 @@ list_archive.next:
 list_archive.headed:
 		call	print_member
 		call	add_totals
-		ld	hl,(members)
+		ld	hl,(listed)
 		inc	hl
-		ld	(members),hl
+		ld	(listed),hl
+list_archive.skip:
 		call	lzh_skip_data
 		or	a
 		jr	z,list_archive.next
@@ -195,7 +270,13 @@ list_archive.done:
 list_archive.end:
 		ld	a,(listing)
 		or	a
+		jr	z,list_archive.unmatched
+		ld	hl,(listed)
+		ld	a,h
+		or	l
 		call	nz,print_totals	; a listing ends with its totals
+list_archive.unmatched:
+		call	report_unmatched
 		jr	list_archive.done
 list_archive.dos_error:
 		ld	b,a		; COMMAND2 prints its message
@@ -256,7 +337,8 @@ extract_archive.next:
 
 ; extract_member - extract, or skip, the member just read.
 ;
-;   Only -lh0- (stored) members are extracted in this phase. The file,
+;   A member not asked for is passed over without a line. Only -lh0-
+;   (stored) members are extracted in this phase. The file,
 ;   dest_path and the member's name, is created with _CREATE's "create
 ;   new" flag unless /O was given, so an existing file is never replaced
 ;   by accident: MSX-DOS2 refuses with .FILEX. The data is copied
@@ -275,6 +357,8 @@ extract_archive.next:
 ; Scratch:	none
 
 extract_member:
+		call	member_selected	; Z: asked for
+		jp	nz,lzh_skip_data	; not asked for: no line
 		call	member_supported	; Z: -lh0-
 		jp	nz,extract_member.unsupported	; too far for jr
 		ld	hl,dest_path	; out_name: dest_path, a "\" if it
@@ -515,6 +599,8 @@ check_space.next:
 		ld	hl,(members)
 		inc	hl
 		ld	(members),hl
+		call	member_selected	; Z: asked for
+		jr	nz,check_space.skip
 		call	member_supported	; Z: it will be extracted
 		jr	nz,check_space.skip
 		ld	hl,(lzh_original)
@@ -755,6 +841,8 @@ not_extracted.next:
 		ld	de,(members)
 		sbc	hl,de		; carry clear from OR A
 		jr	c,not_extracted.skip	; before the one that failed
+		call	member_selected	; only those asked for
+		jr	nz,not_extracted.skip
 		print	msg_not_extracted
 		printl	lzh_name,(lzh_name_length)
 		print	msg_crlf
@@ -871,6 +959,196 @@ print_size.digits:
 		dos	_STROUT		; " KB", or ".N MB"
 		ret
 
+; member_selected - whether the member just read was asked for.
+;
+;   With no names given, every member is. Otherwise it must match at
+;   least one of them; each name it matches is marked as matched, so
+;   that report_unmatched can name the ones nothing matched.
+;
+; Input:	lzh_name, lzh_name_length (lzh.as)
+;		name_list, name_count
+; Output:	Z set = it was asked for
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+member_selected:
+		ld	a,(name_count)
+		or	a
+		ret	z		; no names: all of them
+		ld	b,a
+		ld	c,1		; C = 0 once one matches
+		ld	hl,name_list
+member_selected.next:
+		push	bc
+		push	hl
+		inc	hl		; past the flag
+		ex	de,hl		; DE -> the name given
+		ld	hl,lzh_name
+		ld	bc,(lzh_name_length)
+		call	match_name	; Z: it matches
+		pop	hl
+		pop	bc
+		jr	nz,member_selected.skip
+		ld	(hl),1		; matched
+		ld	c,0
+member_selected.skip:
+		inc	hl		; to the next flag
+		ld	a,(hl)
+		or	a
+		jr	nz,member_selected.skip
+		inc	hl
+		djnz	member_selected.next
+		ld	a,c
+		or	a		; Z: one matched
+		ret
+
+; match_name - whether a member's name matches a name given, with its
+;   wildcards.
+;
+;   "?" matches any one character, "*" any run of them, none included;
+;   anything else matches itself, upper and lower case alike. The whole
+;   name must match. When a character does not match, the last "*" is
+;   tried again one character further on, which is enough: a later "*"
+;   can always take up what an earlier one did not.
+;
+; Input:	DE -> the name given, upper case, ending in 0
+;		HL -> the member's name
+;		BC = its length
+; Output:	Z set = it matches
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+match_name:
+		push	hl
+		add	hl,bc
+		ld	(match_end),hl	; just after the member's name
+		pop	hl
+		ld	bc,0
+		ld	(match_star),bc	; no "*" yet
+match_name.next:
+		ld	a,(de)
+		cp	"*"
+		jr	z,match_name.star
+		call	match_at_end	; Z: no more of the member's name
+		jr	z,match_name.end
+		ld	a,(de)
+		or	a
+		jr	z,match_name.back	; the name given is used up
+		cp	"?"
+		jr	z,match_name.one
+		ld	c,a
+		ld	a,(hl)
+		call	fold_case
+		cp	c
+		jr	nz,match_name.back
+match_name.one:
+		inc	de
+		inc	hl
+		jr	match_name.next
+match_name.star:
+		inc	de
+		ld	(match_star),de	; what follows it
+		ld	(match_from),hl	; where it starts taking
+		jr	match_name.next
+match_name.back:
+		ld	de,(match_star)
+		ld	a,d
+		or	e
+		jr	z,match_name.no	; no "*" to take one more
+		ld	hl,(match_from)
+		call	match_at_end
+		jr	z,match_name.no
+		inc	hl
+		ld	(match_from),hl
+		jr	match_name.next
+match_name.end:
+		ld	a,(de)		; any "*" left matches nothing
+		cp	"*"
+		jr	nz,match_name.ended
+		inc	de
+		jr	match_name.end
+match_name.ended:
+		or	a		; Z: the name given is used up too
+		ret
+match_name.no:
+		or	1		; Z clear
+		ret
+
+; match_at_end - whether HL is at the end of the member's name.
+;
+; Input:	HL
+;		match_end
+; Output:	Z set = it is
+; Modifies:	AF
+; Scratch:	none
+
+match_at_end:
+		push	de
+		ld	de,(match_end)
+		or	a
+		sbc	hl,de
+		add	hl,de		; Z from the SBC
+		pop	de
+		ret
+
+; fold_case - a-z to A-Z.
+;
+; Input:	A
+; Output:	A, upper case if it was a lower case letter
+; Modifies:	AF
+; Scratch:	none
+
+fold_case:
+		cp	"a"
+		ret	c
+		cp	"z"+1
+		ret	nc
+		sub	"a"-"A"
+		ret
+
+; report_unmatched - a line for each name given that matched nothing.
+;
+; Input:	name_list, name_count
+; Output:	the lines, on standard output
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+report_unmatched:
+		ld	a,(name_count)
+		or	a
+		ret	z
+		ld	b,a
+		ld	hl,name_list
+report_unmatched.next:
+		ld	a,(hl)		; the flag
+		inc	hl		; HL -> the name
+		or	a
+		jr	nz,report_unmatched.skip
+		push	bc
+		push	hl
+		print	msg_not_in
+		pop	de
+		push	de
+		call	print_zero
+		print	msg_crlf
+		pop	hl
+		pop	bc
+report_unmatched.skip:
+		ld	a,(hl)
+		inc	hl
+		or	a
+		jr	nz,report_unmatched.skip
+		djnz	report_unmatched.next
+		ret
 ; set_date_attributes - give the file just extracted its date and its
 ;   attributes.
 ;
@@ -1222,7 +1500,7 @@ add_totals:
 ;   The count is written 5 wide and printed from its first digit, then
 ;   " file" or " files".
 ;
-; Input:	total_packed, total_original, members
+; Input:	total_packed, total_original, listed
 ; Output:	they are printed
 ; Modifies:	AF
 ;		BC
@@ -1244,7 +1522,7 @@ print_totals:
 		ld	ix,total_text+21
 		call	format_number
 		printl	total_text,TOTAL_FIXED
-		ld	hl,(members)
+		ld	hl,(listed)
 		ld	de,0
 		ld	b,5
 		ld	ix,count_text+5
@@ -1262,7 +1540,7 @@ print_totals.count:
 		or	a
 		sbc	hl,de
 		call	print_length
-		ld	hl,(members)
+		ld	hl,(listed)
 		dec	hl
 		ld	a,h
 		or	l
@@ -1297,6 +1575,7 @@ print_totals.word:
 ;			between them; check_space writes the letter
 ; msg_kb, msg_mb, mb_digit	print_size's units; it writes the tenths
 ; msg_not_extracted	not_extracted's line, before the name
+; msg_not_in		report_unmatched's line, before the name
 ;
 switch_letters:	defb	"DLOQV?",0
 msg_need_dos2:	defb	"ERROR: UNKAGO needs MSX-DOS2 or Nextor."
@@ -1378,13 +1657,15 @@ msg_mb:		defb	"."
 mb_digit:	defb	"0 MB$"
 msg_not_extracted:
 		defb	"Not extracted $"
+msg_not_in:	defb	"Not in the archive: $"
 
 		dseg
 
 ; Variables for main and list_archive:
 ;
 ; archive_name		the archive's name, from the command line, and a 0
-; members		how many members have been listed
+; members		how many members have been read
+; listed		how many of them were listed
 ; total_packed		the packed sizes added up, 4 bytes
 ; total_original		the original sizes added up, 4 bytes
 ; line_text		a listing line, before the name; print_member
@@ -1413,6 +1694,11 @@ msg_not_extracted:
 ; need_clusters		what the extraction takes, 4 bytes
 ; stop_code		not_extracted: what stopped the extraction
 ; walked		not_extracted: the members walked again
+; name_list		the member names given: a flag, the name, a 0
+; name_count		how many
+; match_end, match_star, match_from
+;			match_name: the end of the member's name, what
+;			follows the last "*", where that "*" starts
 ; size_round, size_value, size_text
 ;			print_size: rounding up or not, the amount in
 ;			tenths, and the number, 10 wide
@@ -1453,6 +1739,12 @@ walked:	defs	2
 size_round:	defs	1
 size_value:	defs	4
 size_text:	defs	10
+listed:	defs	2
+name_list:	defs	192
+name_count:	defs	1
+match_end:	defs	2
+match_star:	defs	2
+match_from:	defs	2
 
 		dseg	buffers
 copy_buffer:	defs	COPY_SIZE

@@ -135,9 +135,31 @@ echo --- unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh>>tests\results.txt
 build\unkago /D:H:\NEW\SUB tests\unkago\multi0.lzh>>tests\results.txt
 echo --- unkago /D:H: tests\unkago\lie.lzh>>tests\results.txt
 build\unkago /D:H: tests\unkago\lie.lzh>>tests\results.txt
+echo --- unkago /D:H: tests\unkago\pair.lzh small.dat>>tests\results.txt
+build\unkago /D:H: tests\unkago\pair.lzh small.dat>>tests\results.txt
 dir h:\>>tests\dates.txt
 dir h:\new\sub>>tests\dates.txt
 ramdisk 0 /d
+
+rem MEMBERS runs in TESTS\OUT and extracts into TESTS\OUT\SEL:
+rem members chosen by name, any case, with * and ?.
+echo === UNKAGO MEMBERS>>tests\results.txt
+cd tests\out
+echo --- unkago /O /D:sel ..\unkago\multi0.lzh readme.txt>>..\results.txt
+..\..\build\unkago /O /D:sel ..\unkago\multi0.lzh readme.txt>>..\results.txt
+echo --- unkago /D:sel ..\unkago\multi0.lzh nosuch.txt>>..\results.txt
+..\..\build\unkago /D:sel ..\unkago\multi0.lzh nosuch.txt>>..\results.txt
+echo --- unkago /O /D:sel ..\unkago\multi0.lzh *.dat a?b.*>>..\results.txt
+..\..\build\unkago /O /D:sel ..\unkago\multi0.lzh *.dat a?b.*>>..\results.txt
+echo --- unkago /D:sel ..\unkago\multi0.lzh empty.dat /O>>..\results.txt
+..\..\build\unkago /D:sel ..\unkago\multi0.lzh empty.dat /O>>..\results.txt
+echo --- unkago /L ..\unkago\multi0.lzh *.txt>>..\results.txt
+..\..\build\unkago /L ..\unkago\multi0.lzh *.txt>>..\results.txt
+echo --- unkago /L ..\unkago\multi0.lzh *e*e*>>..\results.txt
+..\..\build\unkago /L ..\unkago\multi0.lzh *e*e*>>..\results.txt
+echo --- unkago /L ..\unkago\multi0.lzh x*>>..\results.txt
+..\..\build\unkago /L ..\unkago\multi0.lzh x*>>..\results.txt
+cd ..\..
 
 echo === MAPTEST>>tests\results.txt
 echo --- maptest>>tests\results.txt

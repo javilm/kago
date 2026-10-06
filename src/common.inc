@@ -13,6 +13,7 @@
 		extrn	switch_value
 		extrn	safe_p2restore
 		extrn	first_argument
+		extrn	skip_word
 		extrn	print_length
 		extrn	divide_by_c
 		extrn	format_padded

@@ -81,6 +81,11 @@ lie.lzh
     free-space check passes and the disk fills while it is copied;
     then AFTER.DAT, 11 bytes, honest
     sha256 200b3f1b7be16b5c81ba99d208667f190cf26e87b9ac36d613e1585e61acbf93
+pair.lzh
+    made for Tsuzura: level 0, stored: BIG.DAT, the same 20000 bytes as
+    big1.lzh's, then SMALL.DAT, 15 bytes. Too big for what is
+    left of the RAM disk, unless only SMALL.DAT is asked for
+    sha256 b8063e467d51afec2b2f56e86ec8b4ddf8e655254b04a1c020860f4831392bdd
 
 The archives from lhasa are distributed under its licence:
 

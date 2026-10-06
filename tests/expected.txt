@@ -288,6 +288,33 @@ Not extracted LIE.DAT
 Not extracted AFTER.DAT
 
 *** Disk full
+--- unkago /D:H: tests\unkago\pair.lzh small.dat
+Extracting SMALL.DAT OK
+=== UNKAGO MEMBERS
+--- unkago /O /D:sel ..\unkago\multi0.lzh readme.txt
+Extracting README.TXT OK
+--- unkago /D:sel ..\unkago\multi0.lzh nosuch.txt
+Not in the archive: NOSUCH.TXT
+--- unkago /O /D:sel ..\unkago\multi0.lzh *.dat a?b.*
+Extracting A$B.TXT OK
+Extracting EMPTY.DAT OK
+--- unkago /D:sel ..\unkago\multi0.lzh empty.dat /O
+Extracting EMPTY.DAT OK
+--- unkago /L ..\unkago\multi0.lzh *.txt
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        20         20 -lh0-  2026-10-06 17:59 README.TXT
+        28         28 -lh0-  2026-10-06 17:59 A$B.TXT
+---------- ---------- ------                  ------------
+        48         48        2 files
+--- unkago /L ..\unkago\multi0.lzh *e*e*
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        20         20 -lh0-  2026-10-06 17:59 README.TXT
+---------- ---------- ------                  ------------
+        20         20        1 file
+--- unkago /L ..\unkago\multi0.lzh x*
+Not in the archive: X*
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free
