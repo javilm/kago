@@ -302,17 +302,22 @@ rem KIN, which gives its files and directories fixed dates and
 rem attributes; KAGO archives the tree into K1.LZH, which UNKAGO lists,
 rem then extracts into KOUT for the Mac to compare. Then the refusals, a
 rem format the switch chooses, a directory named, and an archive among
-rem the files it is made of. KAGO never replaces an archive, so its
-rem archives are deleted first. RO.TXT is left read-only, so it is made
-rem writable first, for /O to replace it. What KOUT\KIN holds goes into
-rem TESTS\DATES.TXT.
+rem the files it is made of. The same tree goes into Z1.ZIP, which
+rem UNKAGO lists and extracts into ZOUT, and KIN\SUB into Z2.DAT, ZIP by
+rem the switch. KAGO never replaces an archive, so its archives are
+rem deleted first. RO.TXT is left read-only, so it is made writable
+rem first, for /O to replace it. What KOUT\KIN and ZOUT\KIN hold goes
+rem into TESTS\DATES.TXT.
 echo === KAGO ARCHIVING>>tests\results.txt
 attrib -r tests\out\kin\ro.txt
 attrib -r tests\out\kout\kin\ro.txt
+attrib -r tests\out\zout\kin\ro.txt
 cd tests\out
 del k1.lzh
 del k2.dat
 del k3.lzh
+del z1.zip
+del z2.dat
 echo --- unkago /O /D:kin ..\kago\kin.lzh>>..\results.txt
 ..\..\build\unkago /O /D:kin ..\kago\kin.lzh>>..\results.txt
 echo --- kago k1.lzh kin\*.*>>..\results.txt
@@ -331,8 +336,16 @@ echo --- kago k2.lzh ..\kago\kin.lzh>>..\results.txt
 ..\..\build\kago k2.lzh ..\kago\kin.lzh>>..\results.txt
 echo --- unkago /L k2.lzh>>..\results.txt
 ..\..\build\unkago /L k2.lzh>>..\results.txt
-echo --- kago k2.zip kin\a.txt>>..\results.txt
-..\..\build\kago k2.zip kin\a.txt>>..\results.txt
+echo --- kago z1.zip kin\*.*>>..\results.txt
+..\..\build\kago z1.zip kin\*.*>>..\results.txt
+echo --- unkago /L z1.zip>>..\results.txt
+..\..\build\unkago /L z1.zip>>..\results.txt
+echo --- unkago /O /D:zout z1.zip>>..\results.txt
+..\..\build\unkago /O /D:zout z1.zip>>..\results.txt
+echo --- kago /f:zip z2.dat kin\sub>>..\results.txt
+..\..\build\kago /f:zip z2.dat kin\sub>>..\results.txt
+echo --- unkago /L z2.dat>>..\results.txt
+..\..\build\unkago /L z2.dat>>..\results.txt
 echo --- kago k2.pma kin\a.txt>>..\results.txt
 ..\..\build\kago k2.pma kin\a.txt>>..\results.txt
 echo --- kago k2.txt kin\a.txt>>..\results.txt
@@ -355,6 +368,8 @@ del kout\kin\self.lzh
 cd ..\..
 dir /h tests\out\kout\kin>>tests\dates.txt
 dir /h tests\out\kout\kin\sub>>tests\dates.txt
+dir /h tests\out\zout\kin>>tests\dates.txt
+dir /h tests\out\zout\kin\sub>>tests\dates.txt
 
 rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
 rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves

@@ -17,7 +17,8 @@ Usage: KAGO [switches] archive files...
 Files may use * and ?.
 
 --- kago /f:zip archive.zip file.txt
-Writing ZIP archives is not supported yet.
+Skipping file.txt: File not found
+Nothing to add: archive.zip was not written.
 --- kago /Q /Y
 KAGO LZH/PMA/ZIP Compressor v0.1.0
 Copyright (C) 2026 Javier Lavandeira
@@ -626,8 +627,52 @@ Nothing to add: k2.lzh was not written.
 --- unkago /L k2.lzh
 
 *** File not found
---- kago k2.zip kin\a.txt
-Writing ZIP archives is not supported yet.
+--- kago z1.zip kin\*.*
+Adding KIN\A.TXT OK
+Adding KIN\BIG.DAT OK
+Adding KIN\EMPTY.DAT OK
+Adding KIN\RO.TXT OK
+Adding KIN\HID.TXT OK
+Adding KIN\A$B.TXT OK
+Adding KIN\SUB\ OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
+--- unkago /L z1.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        18         18 stored 2001-02-03 04:05 KIN\A.TXT
+     70000      70000 stored 1980-01-01 00:00 KIN\BIG.DAT
+         0          0 stored 2024-02-29 12:34 KIN\EMPTY.DAT
+        12         12 stored 2100-03-01 00:00 KIN\RO.TXT
+         9          9 stored 2106-02-07 06:28 KIN\HID.TXT
+        23         23 stored 2099-12-31 23:59 KIN\A$B.TXT
+         0          0 stored 2026-10-07 10:00 KIN\SUB\
+        13         13 stored 2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 stored 2026-10-07 10:00 KIN\SUB\DEEP\
+---------- ---------- ------                  ------------
+     70075      70075        9 files
+--- unkago /O /D:zout z1.zip
+Extracting KIN\A.TXT OK
+Extracting KIN\BIG.DAT OK
+Extracting KIN\EMPTY.DAT OK
+Extracting KIN\RO.TXT OK
+Extracting KIN\HID.TXT OK
+Extracting KIN\A$B.TXT OK
+Extracting KIN\SUB\ OK
+Extracting KIN\SUB\IN.TXT OK
+Extracting KIN\SUB\DEEP\ OK
+--- kago /f:zip z2.dat kin\sub
+Adding KIN\SUB\ OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
+--- unkago /L z2.dat
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         0          0 stored 2026-10-07 10:00 KIN\SUB\
+        13         13 stored 2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 stored 2026-10-07 10:00 KIN\SUB\DEEP\
+---------- ---------- ------                  ------------
+        13         13        3 files
 --- kago k2.pma kin\a.txt
 Writing PMA archives is not supported yet.
 --- kago k2.txt kin\a.txt

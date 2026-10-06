@@ -1,15 +1,18 @@
-; kago.as - KAGO, the compressor. It writes LZH archives, every member
-; stored, of the files and directory trees named on the command line.
+; kago.as - KAGO, the compressor. It writes LZH and ZIP archives, every
+; member stored, of the files and directory trees named on the command
+; line.
 ;
 ; It checks for MSX-DOS2 and the command line, and chooses the format:
-; /F: names it, or the archive's extension does. Only LZH is written so
-; far; ZIP and PMA say so. The archive is created new: one that exists
+; /F: names it, or the archive's extension does. LZH and ZIP are
+; written; PMA says so. The archive is created new: one that exists
 ; already is refused. Each word after the archive's name is a file, *
 ; and ? allowed, found with MSX-DOS2's _FFIRST and _FNEXT; each file
 ; found is added, its path as typed less the drive (word_dirs), its
-; date, time and attributes, its data stored and its CRC-16 computed on
-; the way. The header goes in front of the data, written again once the
-; CRC and the size are known (lzhw.as makes it). A directory found is
+; date, time and attributes, its data stored and its CRC computed on
+; the way: CRC-16 for LZH, CRC-32 for ZIP. The header goes in front of
+; the data, written again once the CRC and the size are known (lzhw.as
+; makes LZH's, zipw.as ZIP's). A ZIP archive ends with its central
+; directory, kept in mapper segments until then. A directory found is
 ; added whole: a -lhd- member, then everything in it, at every depth
 ; (add_tree). The archive itself, if a name matches it, is passed over.
 ; An archive nothing was added to is deleted. Any MSX-DOS error stops,
@@ -18,6 +21,7 @@
 		include	common.inc	; common.as's routines, and print
 		include	crc.inc		; crc.as: the CRC-16
 		include	lzhw.inc	; lzhw.as: the member's header
+		include	zipw.inc	; zipw.as: ZIP's headers
 		include	progress.inc	; progress.as: the progress line
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
@@ -51,7 +55,8 @@ FORMAT_ZIP	equ	2
 ;   Then the archive: the first word that is not a switch, and its
 ;   format (archive_format). With no archive named, the usage; with no
 ;   file named after it, .NOPAR (*** Missing parameter). The words after
-;   it are added one by one (add_word); the archive ends with a 0 byte.
+;   it are added one by one (add_word). An LZH archive ends with a 0
+;   byte; a ZIP archive with its central directory and end record.
 ;
 ; Input:	the command line, at COMMAND_TAIL (common.as)
 ; Output:	does not return
@@ -61,6 +66,8 @@ FORMAT_ZIP	equ	2
 main:
 		call	dos_version	; CY set = not MSX-DOS2
 		jp	c,main.need_dos2	; too far for jr
+		call	heapinit	; MapperHeap: CY set = no mapper
+		jp	c,main.no_mapper	; too far for jr
 		ld	hl,switch_letters
 		call	find_bad_switch	; CY set = a switch it does not take
 		jp	c,main.bad_switch	; too far for jr
@@ -96,7 +103,7 @@ main.files:
 		call	progress_init	; on the screen, not with /Q
 		ld	hl,adding_line	; what the line starts with
 		ld	(progress_line),hl
-		call	crc_init	; the CRC-16's table
+		call	crc_tables	; CRC-16's table, or CRC-32's
 		ld	hl,0
 		ld	(added),hl
 main.word:
@@ -118,9 +125,35 @@ main.done:
 		ld	a,h
 		or	l
 		jr	z,main.nothing
-		ld	de,end_mark	; the end of the archive: a 0
+		ld	a,(out_format)
+		or	a
+		jr	nz,main.central
+		ld	de,end_mark	; LZH: the end of the archive, a 0
 		ld	hl,1
 		call	archive_write
+		jr	main.close
+main.central:
+		ld	a,1		; ZIP: the central directory, here
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	archive_seek	; DE:HL = where it starts
+		ld	(zipw_at),hl
+		ld	(zipw_at+2),de
+main.copy:
+		ld	de,copy_buffer
+		ld	bc,COPY_SIZE
+		call	zipw_copy	; HL = how many bytes, 0 at the end
+		ld	a,h
+		or	l
+		jr	z,main.end_record
+		ld	de,copy_buffer
+		call	archive_write
+		jr	main.copy
+main.end_record:
+		call	zipw_end	; then the end record
+		call	archive_write
+main.close:
 		ld	a,(archive_handle)
 		ld	b,a
 		dos	_CLOSE
@@ -148,6 +181,10 @@ main.bad_switch:
 		ld	b,.IOPT		; COMMAND2: *** Invalid option
 		dos	_TERM
 
+main.no_mapper:
+		print	msg_no_mapper
+		dos	_TERM0
+
 main.need_dos2:
 		print	msg_need_dos2	; _STROUT: MSX-DOS1 has it too
 		dos	_TERM0		; function 00h, in MSX-DOS1 too
@@ -155,12 +192,13 @@ main.need_dos2:
 ; archive_format - the archive's format, from /F: or the extension.
 ;
 ;   /F: takes LZH, PMA or ZIP, in either case. Without it the archive
-;   name's last four characters decide: .LZH or .LHA, .PMA, .ZIP. Only
-;   LZH is written for now: ZIP and PMA end the program saying so, as
-;   do a value /F: does not take and a name that says no format.
+;   name's last four characters decide: .LZH or .LHA, .PMA, .ZIP. PMA
+;   is not written yet: it ends the program saying so, as do a value
+;   /F: does not take and a name that says no format.
 ;
 ; Input:	archive_name
-; Output:	returns only for LZH
+; Output:	returns only for LZH and ZIP
+;		out_format = FORMAT_LZH or FORMAT_ZIP
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -204,13 +242,11 @@ archive_format.ended:
 		call	format_name	; Z: A = the format
 		jr	nz,archive_format.none
 archive_format.chosen:
-		cp	FORMAT_LZH
-		ret	z
 		ld	de,msg_no_pma
 		cp	FORMAT_PMA
 		jr	z,archive_format.say
-		ld	de,msg_no_zip
-		jr	archive_format.say
+		ld	(out_format),a	; LZH or ZIP
+		ret
 archive_format.unknown:
 		ld	de,msg_bad_format
 		jr	archive_format.say
@@ -444,22 +480,14 @@ add_entry.file:
 		jp	nz,fail
 		ld	a,b
 		ld	(in_handle),a
-		ld	a,1		; where the header goes: here
-		ld	de,0
-		ld	h,d
-		ld	l,e
-		call	archive_seek	; DE:HL = where the file is now
-		ld	(header_at),hl
-		ld	(header_at+2),de
-		call	lzhw_header	; DE -> it, HL = its length
-		call	archive_write
+		call	write_header	; as far as it is known
 		print	msg_adding
 		call	print_member
 		ld	hl,(lzhw_size)
 		ld	de,(lzhw_size+2)
 		call	progress_start	; "   0%", on the screen
+		call	crc_start	; the data's CRC
 		ld	hl,0
-		ld	(crc_value),hl	; the data's CRC, from 0
 		ld	(lzhw_size),hl	; and its size, as it is read
 		ld	(lzhw_size+2),hl
 add_entry.copy:
@@ -478,7 +506,7 @@ add_entry.read:
 		ld	b,h
 		ld	c,l
 		ld	de,copy_buffer
-		call	crc_update
+		call	crc_add
 		ld	de,copy_buffer
 		ld	hl,(chunk)
 		call	archive_write
@@ -499,19 +527,19 @@ add_entry.copied:
 		dos	_CLOSE
 		ld	a,0FFh
 		ld	(in_handle),a
-		ld	hl,(crc_value)
-		ld	(lzhw_crc),hl
+		call	crc_done	; lzhw_crc, or zipw_crc
 		xor	a		; back to the header
 		ld	hl,(header_at)
 		ld	de,(header_at+2)
 		call	archive_seek
-		call	lzhw_header	; the same length: only numbers changed
+		call	member_header	; the same length: only numbers changed
 		call	archive_write
 		ld	a,2		; on to the end again
 		ld	de,0
 		ld	h,d
 		ld	l,e
 		call	archive_seek
+		call	keep_member	; ZIP: its central record
 		call	progress_end	; the number off the line
 		print	msg_ok
 		ld	hl,(added)
@@ -562,8 +590,8 @@ add_tree:
 		ld	de,lzhw_method
 		ld	bc,5
 		ldir
-		call	lzhw_header	; no data: written once
-		call	archive_write
+		call	write_header	; no data: written once
+		call	keep_member	; ZIP: its central record
 		print	msg_adding
 		call	print_member
 		print	msg_ok
@@ -615,6 +643,137 @@ entry_details:
 		ldir
 		ld	hl,0
 		ld	(lzhw_crc),hl
+		ld	(zipw_crc),hl
+		ld	(zipw_crc+2),hl
+		ret
+
+; write_header - the member's header, where the archive is now.
+;
+;   Where that is goes in header_at, to come back to, and in zipw_at,
+;   for ZIP's central record.
+;
+; Input:	lzhw.as's variables; zipw_crc
+; Output:	the header, written
+;		header_at, zipw_at
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+write_header:
+		ld	a,1		; here
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	archive_seek	; DE:HL = where the archive is
+		ld	(header_at),hl
+		ld	(header_at+2),de
+		ld	(zipw_at),hl
+		ld	(zipw_at+2),de
+		call	member_header
+		jp	archive_write
+
+; member_header - the member's header, LZH's or ZIP's, by out_format.
+;
+; Input:	out_format; lzhw.as's variables; zipw_crc
+; Output:	DE -> it
+;		HL = its length
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+member_header:
+		ld	a,(out_format)
+		or	a
+		jp	z,lzhw_header
+		jp	zipw_local
+
+; keep_member - ZIP: the member's central record, kept for the end.
+;
+;   None is left in the mapper: the line is ended, KAGO says so, and
+;   stops, the archive deleted (fail, with no MSX-DOS error).
+;
+; Input:	out_format; lzhw.as's variables; zipw_crc, zipw_at
+; Output:	returns only if it was kept, or for LZH
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+keep_member:
+		ld	a,(out_format)
+		or	a
+		ret	z		; LZH: nothing to keep
+		call	zipw_keep	; CY: no room
+		ret	nc
+		print	msg_crlf
+		print	msg_no_memory
+		xor	a		; no MSX-DOS error
+		jp	fail
+
+; crc_tables, crc_start, crc_add, crc_done - the data's CRC, by
+;   out_format: CRC-16 for LZH, CRC-32 for ZIP.
+;
+;   crc_tables builds the table, once; crc_start starts a member's CRC
+;   (0 for CRC-16, 0FFFFFFFFh for CRC-32); crc_add adds BC bytes at DE;
+;   crc_done puts it where the header takes it: lzhw_crc, or zipw_crc,
+;   complemented.
+;
+; Input:	out_format; crc_value, crc32_value (crc.as)
+; Output:	crc_done: lzhw_crc, or zipw_crc
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+crc_tables:
+		ld	a,(out_format)
+		or	a
+		jp	z,crc_init
+		jp	crc32_init
+
+crc_start:
+		ld	a,(out_format)
+		or	a
+		ld	hl,0
+		jr	z,crc_start.lzh
+		dec	hl		; 0FFFFh
+		ld	(crc32_value),hl
+		ld	(crc32_value+2),hl
+		ret
+crc_start.lzh:
+		ld	(crc_value),hl
+		ret
+
+crc_add:
+		ld	a,(out_format)
+		or	a
+		jp	z,crc_update
+		jp	crc32_update
+
+crc_done:
+		ld	a,(out_format)
+		or	a
+		jr	nz,crc_done.zip
+		ld	hl,(crc_value)
+		ld	(lzhw_crc),hl
+		ret
+crc_done.zip:
+		ld	hl,crc32_value	; complemented
+		ld	de,zipw_crc
+		ld	b,4
+crc_done.byte:
+		ld	a,(hl)
+		cpl
+		ld	(de),a
+		inc	hl
+		inc	de
+		djnz	crc_done.byte
 		ret
 
 ; fib_push, fib_pop - keep fib in fib_stack, one level deeper, and
@@ -954,7 +1113,9 @@ fail_closed:
 ; msg_need_dos2		the refusal under MSX-DOS1
 ; msg_banner		the name, version, copyright and web address
 ; msg_usage		the rest of the usage, after the banner
-; msg_no_format, msg_bad_format, msg_no_zip, msg_no_pma
+; msg_no_mapper		heapinit found no mapper support
+; msg_no_memory		no mapper memory left for the central directory
+; msg_no_format, msg_bad_format, msg_no_pma
 ;			archive_format's refusals
 ; format_table		the formats' names: three letters, then the
 ;			format, for each; 0 after the last
@@ -1006,9 +1167,11 @@ msg_no_format:
 msg_bad_format:
 		defb	"Unknown format: use /F:LZH, /F:PMA or /F:ZIP."
 		defb	CHR_CR,CHR_LF,"$"
-msg_no_zip:
-		defb	"Writing ZIP archives is not supported yet."
+msg_no_mapper:	defb	"KAGO needs MSX-DOS2's mapper support."
 		defb	CHR_CR,CHR_LF,"$"
+msg_no_memory:
+		defb	"Not enough mapper memory for the ZIP central"
+		defb	" directory.",CHR_CR,CHR_LF,"$"
 msg_no_pma:
 		defb	"Writing PMA archives is not supported yet."
 		defb	CHR_CR,CHR_LF,"$"
@@ -1035,6 +1198,7 @@ end_mark:	defb	0
 ; Variables for main and the routines above:
 ;
 ; archive_name		the archive's name, from the command line, and a 0
+; out_format		FORMAT_LZH or FORMAT_ZIP: archive_format
 ; archive_handle	the archive, open to write
 ; archive_drive, archive_cluster, archive_entry
 ;			its drive, first cluster and name, as MSX-DOS2
@@ -1058,6 +1222,7 @@ end_mark:	defb	0
 ;			buffers segment
 ;
 archive_name:	defs	128
+out_format:	defs	1
 archive_handle:	defs	1
 archive_drive:	defs	1
 archive_cluster:	defs	2
