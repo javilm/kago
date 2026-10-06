@@ -44,15 +44,19 @@
 ; through mtf_prev, or 256 less that forward, through the second half
 ; (MTF_NEXT on), whichever is shorter. Every byte out moves to the head,
 ; a match's too: those are not seen by this module as they are copied,
-; so pm2_symbol moves them, through back_byte, before the next code. It
-; starts as PMARC2's: 20h to 7Fh, then 00h to 1Fh, A0h to DFh, 80h to
-; 9Fh, E0h to FFh.
+; so pm2_symbol moves them, through back_byte, before the next code
+; (mtf_moved). It starts as PMARC2's: 20h to 7Fh, then 00h to 1Fh, A0h
+; to DFh, 80h to 9Fh, E0h to FFh (mtf_start). pm1.as uses the same list
+; for -pm1-, through mtf_start, mtf_moved and mtf_find (pm2.inc).
 ;
 ; The format follows lhasa (reference/lhasa: lib/pm2_decoder.c,
 ; pma_common.c). Checked before a line of Z80: a Python model of exactly
 ; this decodes every -pm2- member in the tests as lhasa does.
 
 		public	pm2_start
+		public	mtf_start
+		public	mtf_moved
+		public	mtf_find
 
 		include	lh5.inc		; lh5.as's routines
 		include	lh5share.inc	; and what it shares
@@ -95,40 +99,7 @@ pm2_start:
 		ret	nz
 		ld	hl,254		; a match of L bytes: 254 + L
 		ld	(len_bias),hl
-		ld	hl,mtf_prev	; a line: prev[i] = i + 1,
-		xor	a		;   next[i] = i - 1; A = i
-		ld	b,a		; 256 of them
-pm2_start.line:
-		inc	a
-		ld	(hl),a
-		inc	h		; next[i], MTF_NEXT on
-		sub	2
-		ld	(hl),a
-		dec	h
-		add	a,2		; the next i
-		inc	hl
-		djnz	pm2_start.line
-		ld	hl,mtf_links	; cut into PMARC2's groups
-		ld	b,5
-pm2_start.link:
-		ld	e,(hl)		; prev[E] = C, next[C] = E
-		inc	hl
-		ld	c,(hl)
-		inc	hl
-		push	hl
-		ld	d,0
-		ld	hl,mtf_prev
-		add	hl,de
-		ld	(hl),c
-		ld	a,e
-		ld	e,c
-		ld	hl,mtf_prev+MTF_NEXT
-		add	hl,de
-		ld	(hl),a
-		pop	hl
-		djnz	pm2_start.link
-		ld	a,20h
-		ld	(mtf_head),a
+		call	mtf_start	; the list
 		ld	hl,0
 		ld	(pm2_pend),hl
 		ld	(pm2_left),hl
@@ -143,12 +114,10 @@ pm2_start.link:
 ; pm2_symbol - lh5_read's next symbol, from -pm2-: a byte (0 to 255),
 ;   or a match's length L as 254 + L (256 to 510).
 ;
-;   First the last symbol's bytes move to the list's head, oldest first,
-;   straight from the buffer when they are all in this part, through
-;   back_byte one at a time when not; and they are counted: when the
-;   count to the next trees runs out, they are read (pm2_rebuild). Then
-;   the code: a byte is found in the list; a match's length is the
-;   code's, or read after it.
+;   First the last symbol's bytes move to the list's head (mtf_moved),
+;   and are counted: when the count to the next trees runs out, they are
+;   read (pm2_rebuild). Then the code: a byte is found in the list; a
+;   match's length is the code's, or read after it.
 ;
 ; Input:	the bit reader, the tables
 ; Output:	HL = the symbol
@@ -162,40 +131,11 @@ pm2_start.link:
 ; Scratch:	none
 
 pm2_symbol:
-		ld	hl,(pm2_pend)	; the last symbol's bytes
-		ld	a,h
+		ld	hl,(pm2_pend)	; the last symbol's bytes: to the
+		ld	a,h		;   list's head
 		or	l
 		jr	z,pm2_symbol.counted
-		dec	hl		; the first of them
-		call	back_byte	; CY: all in this part, at HL
-		jr	nc,pm2_symbol.ring
-		ld	bc,(pm2_pend)
-pm2_symbol.part:
-		push	bc
-		push	hl
-		ld	a,(hl)
-		call	mtf_update
-		pop	hl
-		pop	bc
-		inc	hl
-		dec	bc
-		ld	a,b
-		or	c
-		jr	nz,pm2_symbol.part
-		jr	pm2_symbol.count
-pm2_symbol.ring:
-		ld	hl,(pm2_pend)	; some in the ring: one at a time
-		ld	(pm2_k),hl
-pm2_symbol.back:
-		ld	hl,(pm2_k)	; from pend back to 1 back
-		dec	hl
-		ld	(pm2_k),hl
-		call	back_byte	; A = the byte
-		call	mtf_update
-		ld	hl,(pm2_k)
-		ld	a,h
-		or	l
-		jr	nz,pm2_symbol.back
+		call	mtf_moved
 pm2_symbol.count:
 		ld	hl,(pm2_left)	; counted
 		ld	de,(pm2_pend)
@@ -592,6 +532,103 @@ off_code:
 		ld	a,e
 		ret
 
+; mtf_start - the list, as PMARC2 and PMarc start it.
+;
+;   A line, each byte one step back from the one before it (prev[i] =
+;   i + 1, forward next[i] = i - 1); then cut and joined into the
+;   groups, mtf_links' pairs; the head a space. Public: pm1.as starts
+;   -pm1-'s list with it.
+;
+; Input:	none
+; Output:	mtf_prev, mtf_head
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+mtf_start:
+		ld	hl,mtf_prev	; a line: prev[i] = i + 1,
+		xor	a		;   next[i] = i - 1; A = i
+		ld	b,a		; 256 of them
+mtf_start.line:
+		inc	a
+		ld	(hl),a
+		inc	h		; next[i], MTF_NEXT on
+		sub	2
+		ld	(hl),a
+		dec	h
+		add	a,2		; the next i
+		inc	hl
+		djnz	mtf_start.line
+		ld	hl,mtf_links	; cut into PMARC2's groups
+		ld	b,5
+mtf_start.link:
+		ld	e,(hl)		; prev[E] = C, next[C] = E
+		inc	hl
+		ld	c,(hl)
+		inc	hl
+		push	hl
+		ld	d,0
+		ld	hl,mtf_prev
+		add	hl,de
+		ld	(hl),c
+		ld	a,e
+		ld	e,c
+		ld	hl,mtf_prev+MTF_NEXT
+		add	hl,de
+		ld	(hl),a
+		pop	hl
+		djnz	mtf_start.link
+		ld	a,20h
+		ld	(mtf_head),a
+		ret
+
+; mtf_moved - the last symbol's bytes, to the list's head, oldest first.
+;
+;   Straight from the buffer when they are all in this part (back_byte's
+;   CY); through back_byte one at a time when some are in the ring.
+;   Public: pm1.as moves -pm1-'s with it.
+;
+; Input:	HL = how many, 1 to 256
+; Output:	the list
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+mtf_moved:
+		ld	(mtf_k),hl
+		dec	hl		; the first of them
+		call	back_byte	; CY: all in this part, at HL
+		jr	nc,mtf_moved.back	; some in the ring
+		ld	bc,(mtf_k)
+mtf_moved.part:
+		push	bc
+		push	hl
+		ld	a,(hl)
+		call	mtf_update
+		pop	hl
+		pop	bc
+		inc	hl
+		dec	bc
+		ld	a,b
+		or	c
+		jr	nz,mtf_moved.part
+		ret
+mtf_moved.back:
+		ld	hl,(mtf_k)	; from HL back to 1 back
+		dec	hl
+		ld	(mtf_k),hl
+		call	back_byte	; A = the byte
+		call	mtf_update
+		ld	hl,(mtf_k)
+		ld	a,h
+		or	l
+		jr	nz,mtf_moved.back
+		ret
+
 ; mtf_find - the byte at a place in the list.
 ;
 ; Input:	A = the place: 0, the head, to 255
@@ -689,7 +726,7 @@ mtf_update:
 ;			length (a word) and the bits after it
 ; rebuild_bytes		pm2_rebuild: the bytes to the next trees, for
 ;			points 1 to 4
-; mtf_links		pm2_start: where the list's line is cut, as pairs
+; mtf_links		mtf_start: where the list's line is cut, as pairs
 ;			(E, C): prev[E] = C, next[C] = E
 ;
 hist_rows:	defb	0,3,8,3,16,4,32,5,64,5,96,5,128,6,192,6
@@ -714,7 +751,8 @@ mtf_links:	defb	7Fh,00h,1Fh,0A0h,0DFh,80h,9Fh,0E0h,0FFh,20h
 ;
 ; mtf_head		the list's head: the last byte out
 ; pm2_pend		the last symbol's bytes, not yet in the list
-; pm2_k			pm2_symbol: how far back the next of them is
+; mtf_k			mtf_moved: how many, then how far back the next
+;			is
 ; pm2_left		the bytes until the next trees; below 0, a match
 ;			went past them
 ; pm2_state		which trees come next: 0 to 4
@@ -729,7 +767,7 @@ mtf_links:	defb	7Fh,00h,1Fh,0A0h,0DFh,80h,9Fh,0E0h,0FFh,20h
 ;
 mtf_head:	defs	1
 pm2_pend:	defs	2
-pm2_k:		defs	2
+mtf_k:		defs	2
 pm2_left:	defs	2
 pm2_state:	defs	1
 pm2_need:	defs	1

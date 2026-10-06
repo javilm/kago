@@ -454,6 +454,11 @@ Extracting BIN.DAT CRC error
 Extracting HELLO.TXT OK
 --- unkago /O /D:pma\sfx ..\unkago\p2sfx.com
 Extracting GPL-2. OK
+--- unkago /O /D:pma\p1 ..\unkago\p1pm1.pma
+Extracting COPYING.TXT OK
+--- unkago /O /D:pma\mtcd ..\unkago\mtcd.pma
+Extracting MTCD.DOC OK
+Extracting CD.MTC OK
 === UNKAGO DIRECTORIES
 --- unkago /L ..\unkago\tree.lzh
     Packed   Original Method Date             Name

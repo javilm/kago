@@ -44,8 +44,9 @@
 ; symbols and distances through sym_vector and dist_vector: decode_c
 ; and decode_p here, inflate.as's own for deflate. lh1.as decodes
 ; -lh1- the same way, its adaptive tree in the tables' block, and
-; pm2.as PMARC2's -pm2-, whose shortest match is 2 bytes: so a match's
-; length is its symbol less len_bias, 253, or 254 for -pm2-.
+; pm2.as PMARC2's -pm2-, and pm1.as PMarc's -pm1-, whose shortest match
+; is 2 bytes: so a match's length is its symbol less len_bias, 253, or
+; 254 for both of them.
 ;
 ; The formats and the table builder follow LHa for UNIX 1.14i
 ; (reference/lha-unix: src/huf.c, maketbl.c, slide.c), checked step
@@ -122,7 +123,8 @@ ROW		equ	34		; mt_count, mt_weight, mt_start:
 ;   lh5_start sets LHA's: the bits taken highest first, decode_c and
 ;   decode_p, C_SYMS. window_start, its second entry, is the rest:
 ;   inflate_start sets deflate's and calls it with -lh6-'s window. It
-;   sets len_bias to 253, which pm2_start changes after it.
+;   sets len_bias to 253, which pm2_start and pm1_start change after
+;   it.
 ;
 ; Input:	B = the method's digit: "4" to "7"
 ;		DE -> the output buffer, 8 KB, below 8000h
@@ -316,7 +318,8 @@ next_distance:
 ; back_byte - a byte already decoded, from the buffer or the ring.
 ;
 ;   As lh5_read's match finds its source: in this part, or further back
-;   in the ring. pm2.as reads its matches' bytes back with it.
+;   in the ring. pm2.as reads matches' bytes back with it, for -pm2- and
+;   -pm1-.
 ;
 ; Input:	HL = how far back, less 1: 0 is the last byte
 ; Output:	A = the byte

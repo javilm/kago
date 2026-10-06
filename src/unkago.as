@@ -1,8 +1,8 @@
 ; unkago.as - UNKAGO, the decompressor: it lists LZH, PMA and ZIP
 ; archives, and extracts LZH's stored, -lh1- and -lh4- to -lh7- members,
-; PMA's stored (-pm0-) and -pm2- ones, and ZIP's stored and deflate ones
-; (lh5.as, lh1.as, pm2.as, inflate.as). A PMA archive is read as LZH
-; (lzh.as).
+; PMA's stored (-pm0-), -pm1- and -pm2- ones, and ZIP's stored and
+; deflate ones (lh5.as, lh1.as, pm1.as, pm2.as, inflate.as). A PMA
+; archive is read as LZH (lzh.as).
 ;
 ; It checks for MSX-DOS2 and the command line. The archive's first bytes
 ; tell its format (open_archive): ZIP's are read by zip.as, LZH's by
@@ -27,6 +27,7 @@
 		include	zip.inc		; zip.as: reading ZIP archives
 		include	inflate.inc	; inflate.as: deflate
 		include	lh1.inc		; lh1.as: -lh1-
+		include	pm1.inc		; pm1.as: -pm1-
 		include	pm2.inc		; pm2.as: -pm2-
 		include	progress.inc	; progress.as: the progress line
 
@@ -506,6 +507,8 @@ extract_member.sized:
 		jr	z,extract_member.lh1
 		cp	"2"		; -pm2-: its own too
 		jr	z,extract_member.pm2
+		cp	"p"		; -pm1-: and its
+		jr	z,extract_member.pm1
 		ld	b,a
 		call	lh5_start	; A = 0, or .NORAM
 		jr	extract_member.started
@@ -514,6 +517,9 @@ extract_member.lh1:
 		jr	extract_member.started
 extract_member.pm2:
 		call	pm2_start	; A = 0, or .NORAM
+		jr	extract_member.started
+extract_member.pm1:
+		call	pm1_start	; A = 0, or .NORAM
 		jr	extract_member.started
 extract_member.inflate:
 		call	inflate_start	; A = 0, or .NORAM
@@ -631,7 +637,8 @@ extract_member.discard:
 
 ; member_supported - whether the member just read is one UNKAGO
 ;   extracts: -lh0- (stored), -lh1-, -lh4- to -lh7-, or -lhd- (a
-;   directory); of PMarc's, -pm0- (stored), as -lh0-, and -pm2-, "2".
+;   directory); of PMarc's, -pm0- (stored), as -lh0-, -pm2-, "2", and
+;   -pm1-, "p", as "1" is -lh1-'s.
 ;   Of a ZIP archive's, its directories and its stored and deflate
 ;   members: stored ones as -lh0-, deflate ones with -lh6-'s window
 ;   ("6", for the memory check); not an encrypted one.
@@ -682,7 +689,12 @@ member_supported.lzh:
 		ret	z
 		cp	"2"
 		ret	z
-		jr	member_supported.no	; -pm1-: not yet
+		cp	"1"
+		jr	nz,member_supported.no
+		ld	a,"p"		; -pm1-
+		ld	(member_kind),a
+		xor	a		; Z set
+		ret
 member_supported.lh:
 		ld	hl,lzh_method
 		ld	de,method_lh0
@@ -849,7 +861,11 @@ check_space.next:
 		cp	"1"		; -lh1-: -lh4-'s ring
 		jr	z,check_space.lh4
 		cp	"2"		; -pm2-: -lh5-'s, the same
+		jr	z,check_space.lh4
+		cp	"p"		; -pm1-: -lh6-'s, 32 KB
 		jr	nz,check_space.ring
+		ld	a,"6"
+		jr	check_space.ring
 check_space.lh4:
 		ld	a,"4"
 check_space.ring:
@@ -2657,7 +2673,7 @@ msg_no_mapper:	defb	"UNKAGO needs MSX-DOS2's mapper support."
 ; walked		not_extracted: the members walked again
 ; member_kind		the member's method's letter: "0", "1", "4" to
 ;			"7", or "d", as member_supported found it; "2"
-;			for -pm2-
+;			for -pm2-, "p" for -pm1-
 ; need_segs		check_space: the largest window, in segments;
 ;			check_memory: and the tables'
 ; free_segs		mapfree's free segments

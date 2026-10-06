@@ -1,4 +1,5 @@
-; lh5share.inc - what inflate.as, lh1.as and pm2.as share of lh5.as beyond
+; lh5share.inc - what inflate.as, lh1.as, pm1.as and pm2.as share of
+; lh5.as beyond
 ; lh5.inc: the tables' layout, the routines it builds and reads them
 ; with, and the variables they work on. Only they and lh5.as include it.
 ;

@@ -19,6 +19,7 @@ tatara /q src\lh5.as lh5.tro
 tatara /q src\inflate.as inflate.tro
 tatara /q src\lh1.as lh1.tro
 tatara /q src\pm2.as pm2.tro
+tatara /q src\pm1.as pm1.tro
 tatara /q src\names.as names.tro
 tatara /q src\zip.as zip.tro
 tatara /q src\progress.as progress.tro
