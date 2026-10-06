@@ -240,6 +240,35 @@ cd ..\..
 dir tests\out\lfn>>tests\dates.txt
 dir tests\out\lfn\longdi~1>>tests\dates.txt
 
+rem ZIP runs in TESTS\OUT and extracts into TESTS\OUT\ZIP: listings of
+rem ZIP archives, stored and deflate, with a comment, with UTF-8 names,
+rem empty, and ZIP64; and the directories of a ZIP tree, made, its
+rem files not yet extracted. What ZIP holds goes into TESTS\DATES.TXT.
+echo === UNKAGO ZIP>>tests\results.txt
+cd tests\out
+echo --- unkago /L ..\unkago\ztree.zip>>..\results.txt
+..\..\build\unkago /L ..\unkago\ztree.zip>>..\results.txt
+echo --- unkago /L ..\unkago\zdefl.zip>>..\results.txt
+..\..\build\unkago /L ..\unkago\zdefl.zip>>..\results.txt
+echo --- unkago /L ..\unkago\zcomm.zip>>..\results.txt
+..\..\build\unkago /L ..\unkago\zcomm.zip>>..\results.txt
+echo --- unkago /L ..\unkago\zutf8.zip>>..\results.txt
+..\..\build\unkago /L ..\unkago\zutf8.zip>>..\results.txt
+echo --- unkago /L ..\unkago\zempty.zip>>..\results.txt
+..\..\build\unkago /L ..\unkago\zempty.zip>>..\results.txt
+echo --- unkago /L ..\unkago\z64.zip>>..\results.txt
+..\..\build\unkago /L ..\unkago\z64.zip>>..\results.txt
+echo --- unkago /O /D:zip ..\unkago\ztree.zip>>..\results.txt
+..\..\build\unkago /O /D:zip ..\unkago\ztree.zip>>..\results.txt
+echo --- unkago /O /D:zip ..\unkago\zutf8.zip>>..\results.txt
+..\..\build\unkago /O /D:zip ..\unkago\zutf8.zip>>..\results.txt
+echo --- unkago /D:zip ..\unkago\zempty.zip>>..\results.txt
+..\..\build\unkago /D:zip ..\unkago\zempty.zip>>..\results.txt
+echo --- unkago /D:zip ..\unkago\z64.zip>>..\results.txt
+..\..\build\unkago /D:zip ..\unkago\z64.zip>>..\results.txt
+cd ..\..
+dir tests\out\zip\ztree>>tests\dates.txt
+
 rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
 rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves
 rem too little, and UNKAGO must refuse; with more memory it extracts.

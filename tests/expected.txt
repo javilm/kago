@@ -238,9 +238,9 @@ The archive ends in the middle of a member.
       6996      18092 -lh5-  2010-01-01 00:00 gpl-2
 The archive ends in the middle of a member.
 --- unkago /L tests\unkago\notlzh.txt
-Not an LZH archive.
+Not an LZH or ZIP archive.
 --- unkago /L tests\unkago\empty.lzh
-Not an LZH archive.
+Not an LZH or ZIP archive.
 === UNKAGO EXTRACTING
 --- unkago /O ..\unkago\multi0.lzh
 Extracting README.TXT OK
@@ -501,6 +501,63 @@ Skipping collision10.txt as COLLI~10.TXT: it already exists
 Skipping collision11.txt as COLLI~11.TXT: it already exists
 --- unkago /O /D:lsel ..\unkago\lfn.lzh collision11.txt
 Extracting collision11.txt as COLLI~11.TXT OK
+=== UNKAGO ZIP
+--- unkago /L ..\unkago\ztree.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         0          0 stored 2026-10-03 12:00 ztree\
+        11         11 stored 2026-10-06 18:00 ztree\ro.txt
+         0          0 stored 2026-10-05 12:00 ztree\empty\
+         0          0 stored 2026-10-04 12:00 ztree\sub\
+         4          4 stored 2026-10-06 18:00 ztree\sub\b.txt
+         0          0 stored 2026-10-05 12:00 ztree\sub\deep\
+         5          5 stored 2026-10-06 18:00 ztree\sub\deep\c.txt
+         3          3 stored 2026-10-06 18:00 ztree\a.txt
+---------- ---------- ------                  ------------
+        23         23        8 files
+--- unkago /L ..\unkago\zdefl.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+       268      19890 deflat 2026-10-06 18:00 gpl.txt
+         3          3 stored 2026-10-06 18:00 ztree\a.txt
+---------- ---------- ------                  ------------
+       271      19893        2 files
+--- unkago /L ..\unkago\zcomm.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+       268      19890 deflat 2026-10-06 18:00 gpl.txt
+         3          3 stored 2026-10-06 18:00 ztree\a.txt
+---------- ---------- ------                  ------------
+       271      19893        2 files
+--- unkago /L ..\unkago\zutf8.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         6          6 stored 2026-10-06 18:00 caf?.txt
+         9          9 stored 2026-10-06 18:00 ??\?.txt
+         5          5 stored 2026-10-06 18:00 dos.txt
+---------- ---------- ------                  ------------
+        20         20        3 files
+--- unkago /L ..\unkago\zempty.zip
+The archive is empty.
+--- unkago /L ..\unkago\z64.zip
+ZIP64 and split archives are not read.
+--- unkago /O /D:zip ..\unkago\ztree.zip
+Extracting ztree\ OK
+Skipping ztree\ro.txt: stored is not supported yet
+Extracting ztree\empty\ OK
+Extracting ztree\sub\ OK
+Skipping ztree\sub\b.txt: stored is not supported yet
+Extracting ztree\sub\deep\ OK
+Skipping ztree\sub\deep\c.txt: stored is not supported yet
+Skipping ztree\a.txt: stored is not supported yet
+--- unkago /O /D:zip ..\unkago\zutf8.zip
+Skipping caf?.txt: stored is not supported yet
+Skipping ??\?.txt: stored is not supported yet
+Skipping dos.txt: stored is not supported yet
+--- unkago /D:zip ..\unkago\zempty.zip
+The archive is empty.
+--- unkago /D:zip ..\unkago\z64.zip
+ZIP64 and split archives are not read.
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

@@ -166,6 +166,28 @@ lfn.lzh
     LONGFI~1.TXT stored as it is, a -lhd- member and two files in "Long
     Directory Name", and collision01.txt to collision11.txt
     sha256 aa9e32aca78bcba11f1d86ec1c42b6dfc773a0abb6333d81bc711d2d01a23d9b
+ztree.zip
+    made for Tsuzura with Info-ZIP's zip 3.0 on Linux, zip -0 -r, TZ=UTC:
+    the same tree as tree.lzh, stored, with RO.TXT read-only
+    sha256 eb2dd04d565c02c8d7fe35d1d3fdf5f21b5dffa33defd324630d80599c974aff
+zdefl.zip
+    the same zip -9: GPL.TXT, 19890 bytes of repeated lines, deflated;
+    ZTREE\A.TXT, stored
+    sha256 9c7f0f0dc45d403df4e3a081eadfd19526fff001e0b4d6e9eb452924ab814474
+zcomm.zip
+    the same archive, with an archive comment added (zip -z)
+    sha256 d008a3ced1c9515e5776095dcbaa667b6dbbc710d03c516818d5ac1b386993c0
+zutf8.zip
+    made for Tsuzura with Python's zipfile (note 015), stored, "made on
+    MS-DOS": cafe.txt with an acute e and a name in Japanese, both
+    flagged UTF-8; DOS.TXT, read-only and hidden
+    sha256 ee02cb2f1d18b038f8c6f14c44458fe3cc1c7694fa184a6f917b5706f408a08b
+zempty.zip
+    the same, with no members: the end record alone, 22 bytes
+    sha256 8739c76e681f900923b900c9df0ef75cf421d39cabb54650c4b9ad19b6a76d85
+z64.zip
+    Info-ZIP's zip -0 -fz: ZTREE\A.TXT in a ZIP64 archive
+    sha256 41768f7dd11a4d2f4c88d7b4ba7b5537a22c4678f6bcbe7a7bc2f0dbea0ca9cb
 
 The archives from lhasa are distributed under its licence:
 

@@ -1,24 +1,27 @@
-; unkago.as - UNKAGO, the decompressor: it lists LZH archives, and
-; extracts their stored and -lh4- to -lh7- members.
+; unkago.as - UNKAGO, the decompressor: it lists LZH and ZIP archives,
+; and extracts LZH's stored and -lh4- to -lh7- members.
 ;
-; It checks for MSX-DOS2 and the command line. With /L it lists the
-; members of an LZH archive: sizes, method, date and path, one line
-; each, and the totals. Without it, it extracts the -lh0- (stored) and
-; -lh4- to -lh7- (lh5.as) members into the current directory, or the
-; one /D: names, checking first that they fit on the disk and their
-; windows in the mapper, and then each one's CRC-16. The directories in
-; the members' paths are made as they are needed, and -lhd- members
-; make theirs and give them their dates; a part of a path that does not
-; fit 8.3 is shortened the VFAT way (names.as). Names after the archive's,
-; with * and ?, choose the members, for listing and extracting alike;
-; a directory's name chooses what is under it. On the screen, each
-; member's line shows how far through it UNKAGO is.
+; It checks for MSX-DOS2 and the command line. The archive's first bytes
+; tell its format (open_archive): ZIP's are read by zip.as, LZH's by
+; lzh.as, into the same variables. With /L it lists the members: sizes,
+; method, date and path, one line each, and the totals. Without it, it
+; extracts the -lh0- (stored) and -lh4- to -lh7- (lh5.as) members into
+; the current directory, or the one /D: names, checking first that they
+; fit on the disk and their windows in the mapper, and then each one's
+; CRC-16. The directories in the members' paths are made as they are
+; needed, and -lhd- members make theirs and give them their dates; a
+; part of a path that does not fit 8.3 is shortened the VFAT way
+; (names.as). Names after the archive's, with * and ?, choose the
+; members, for listing and extracting alike; a directory's name chooses
+; what is under it. On the screen, each member's line shows how far
+; through it UNKAGO is.
 
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
 		include	crc.inc		; crc.as: the CRC-16
 		include	lh5.inc		; lh5.as: the -lh5- decoder
 		include	names.inc	; names.as: the MSX-DOS names
+		include	zip.inc		; zip.as: reading ZIP archives
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .DKFUL...
@@ -193,13 +196,14 @@ collect_names.ended:
 ; list_archive - list the members of the archive named in
 ;   archive_name: a line for each, and the totals.
 ;
-;   lzh.as reads the headers; this prints a heading before the first
-;   member, a line for each (print_member), and the totals after the
-;   last (print_totals), and decides what each result means here. A
-;   listing cut short by a damaged or truncated archive ends with the
-;   message instead of the totals. An archive in which not a single
-;   member could be read is not an LZH archive, unless the first
-;   header is level 3: that is one, and the level is what is reported.
+;   lzh.as or zip.as reads the headers; this prints a heading before
+;   the first member, a line for each (print_member), and the totals
+;   after the last (print_totals), and decides what each result means
+;   here. A listing cut short by a damaged or truncated archive ends
+;   with the message instead of the totals. An archive in which not a
+;   single member could be read is not an LZH archive, unless the
+;   first header is level 3: that is one, and the level is what is
+;   reported. A ZIP archive with no members is one: it is empty.
 ;
 ;   With member names given, only the members they match are listed
 ;   and added up; the heading comes with the first of them, and with
@@ -213,10 +217,9 @@ collect_names.ended:
 ; Scratch:	none
 
 list_archive:
-		ld	de,archive_name
-		call	lzh_open
+		call	open_archive
 		or	a
-		jp	nz,list_archive.dos_error	; not found, say
+		jp	nz,list_archive.stop	; not found, not read: say
 		ld	a,1
 		ld	(listing),a	; report_stop: totals
 		ld	hl,0
@@ -227,7 +230,7 @@ list_archive:
 		ld	(total_original),hl
 		ld	(total_original+2),hl
 list_archive.next:
-		call	lzh_next_header
+		call	next_member
 		or	a
 		jr	nz,list_archive.stop
 		ld	hl,(members)	; read, asked for or not
@@ -247,7 +250,7 @@ list_archive.headed:
 		inc	hl
 		ld	(listed),hl
 list_archive.skip:
-		call	lzh_skip_data
+		call	skip_member
 		or	a
 		jr	z,list_archive.next
 ; report_stop is the end of list_archive, and extract_archive's too:
@@ -262,11 +265,22 @@ list_archive.stop:
 		or	l
 		ld	a,c
 		jr	nz,list_archive.some
+		ld	a,(archive_format)	; none read: ZIP, a result;
+		or	a		;   anything else, not an
+		ld	a,c		;   archive
+		jr	nz,list_archive.zip
 		cp	LZH_LEVEL3
 		jr	z,list_archive.level3
 		ld	de,msg_not_lzh	; no member read at all
 		jr	list_archive.say
+list_archive.zip:
+		ld	de,msg_empty
+		cp	LZH_END
+		jr	z,list_archive.say
 list_archive.some:
+		ld	de,msg_split
+		cp	ZIP_SPLIT
+		jr	z,list_archive.say
 		cp	LZH_END
 		jr	z,list_archive.end
 		ld	de,msg_damaged
@@ -319,10 +333,9 @@ list_archive.dos_error:
 extract_archive:
 		xor	a
 		ld	(listing),a	; report_stop: no totals
-		ld	de,archive_name
-		call	lzh_open
+		call	open_archive
 		or	a
-		jp	nz,report_stop	; not found, say
+		jp	nz,report_stop	; not found, not read: say
 		call	name_walk	; the names; back at the start
 		call	check_space	; returns only if it all fits
 		ld	a,1
@@ -334,7 +347,7 @@ extract_archive:
 		or	a
 		jp	nz,report_stop	; one could not be created
 		ld	(last_length),a	; A = 0: no member's directories yet
-		call	lzh_rewind
+		call	rewind_archive
 		or	a
 		jp	nz,report_stop
 		call	progress_init	; on the screen, not with /Q
@@ -342,7 +355,7 @@ extract_archive:
 		ld	hl,0
 		ld	(members),hl
 extract_archive.next:
-		call	lzh_next_header
+		call	next_member
 		or	a
 		jp	nz,report_stop
 		ld	hl,(members)
@@ -383,7 +396,7 @@ extract_archive.next:
 
 extract_member:
 		call	member_selected	; Z: asked for
-		jp	nz,lzh_skip_data	; not asked for: no line
+		jp	nz,skip_member	; not asked for: no line
 		call	member_supported	; Z: one UNKAGO extracts
 		jp	nz,extract_member.unsupported	; too far for jr
 		call	out_path	; out_name: where it goes
@@ -408,7 +421,7 @@ extract_member:
 		print	msg_skipping	; "create new" refused
 		call	print_target
 		print	msg_exists
-		jp	lzh_skip_data	; A = 0, or what stopped it
+		jp	skip_member	; A = 0, or what stopped it
 extract_member.no_dir:
 		cp	.DKFUL		; no room: stop, not skip
 		ret	z
@@ -421,24 +434,24 @@ extract_member.no_dir:
 		pop	af
 		call	print_explanation	; MSX-DOS2's reason
 		print	msg_crlf
-		jp	lzh_skip_data
+		jp	skip_member
 extract_member.directory:
 		ld	hl,(lzh_name_length)
 		ld	a,h
 		or	l
-		jp	z,lzh_skip_data	; the destination itself: no line
+		jp	z,skip_member	; the destination itself: no line
 		print	msg_extracting
 		call	print_target
 		call	set_date_attributes
 		print	msg_ok
-		jp	lzh_skip_data	; no data, but on to the next header
+		jp	skip_member	; no data, but on to the next header
 extract_member.unsupported:
 		print	msg_skipping
 		call	print_path
 		print	msg_colon
-		printl	lzh_method,5
+		call	print_method
 		print	msg_not_yet
-		jp	lzh_skip_data
+		jp	skip_member
 extract_member.created:
 		ld	a,b
 		ld	(out_handle),a
@@ -577,8 +590,9 @@ extract_member.discard:
 
 ; member_supported - whether the member just read is one UNKAGO
 ;   extracts: -lh0- (stored), -lh4- to -lh7-, or -lhd- (a directory).
+;   Of a ZIP archive's, only its directories, so far.
 ;
-; Input:	lzh_method (lzh.as)
+; Input:	lzh_method, lzh_dir (lzh.as); archive_format
 ; Output:	Z set = it is
 ;		member_kind = the method's digit
 ; Modifies:	AF
@@ -588,6 +602,17 @@ extract_member.discard:
 ; Scratch:	none
 
 member_supported:
+		ld	a,(archive_format)
+		or	a
+		jr	z,member_supported.lzh
+		ld	a,(lzh_dir)	; ZIP: a directory, or not yet
+		or	a
+		jr	z,member_supported.no
+		ld	a,"d"
+		ld	(member_kind),a
+		xor	a		; Z set
+		ret
+member_supported.lzh:
 		ld	hl,lzh_method
 		ld	de,method_lh0
 		ld	b,3		; "-lh"
@@ -636,7 +661,7 @@ name_walk:
 		ld	hl,0
 		ld	(members),hl
 name_walk.next:
-		call	lzh_next_header
+		call	next_member
 		or	a
 		jr	nz,name_walk.end
 		ld	hl,(members)
@@ -644,7 +669,7 @@ name_walk.next:
 		ld	(members),hl
 		call	names_add	; CY: no room
 		jr	c,name_walk.full
-		call	lzh_skip_data
+		call	skip_member
 		or	a
 		jr	z,name_walk.next
 		jp	report_stop	; cut off, or a read error
@@ -652,7 +677,7 @@ name_walk.end:
 		cp	LZH_END
 		jp	nz,report_stop	; damaged, level 3, an error
 		call	names_assign
-		call	lzh_rewind
+		call	rewind_archive
 		or	a
 		ret	z
 		jp	report_stop
@@ -723,7 +748,7 @@ check_space.bytes:
 		ld	(need_segs),a	; no window yet
 		ld	(last_length),a	; no member's directories yet
 check_space.next:
-		call	lzh_next_header
+		call	next_member
 		or	a
 		jr	nz,check_space.end
 		ld	hl,(members)
@@ -760,7 +785,7 @@ check_space.next:
 		jr	c,check_space.skip
 		ld	(hl),a
 check_space.skip:
-		call	lzh_skip_data
+		call	skip_member
 		or	a
 		jr	z,check_space.next
 		jp	report_stop	; cut off, or a read error
@@ -1213,13 +1238,13 @@ member_dirs.kept:
 
 not_extracted:
 		ld	(stop_code),a
-		call	lzh_rewind
+		call	rewind_archive
 		or	a
 		jr	nz,not_extracted.done
 		ld	hl,0
 		ld	(walked),hl
 not_extracted.next:
-		call	lzh_next_header
+		call	next_member
 		or	a
 		jr	nz,not_extracted.done
 		ld	hl,(walked)
@@ -1234,7 +1259,7 @@ not_extracted.next:
 		call	print_path
 		print	msg_crlf
 not_extracted.skip:
-		call	lzh_skip_data
+		call	skip_member
 		or	a
 		jr	z,not_extracted.next
 not_extracted.done:
@@ -1949,7 +1974,7 @@ pack_date.early:
 ; print_path - the member's path, on standard output; a -lhd-
 ;   member's ends in "\".
 ;
-; Input:	lzh_name, lzh_name_length, lzh_method (lzh.as)
+; Input:	lzh_name, lzh_name_length, lzh_dir (lzh.as)
 ; Output:	the path is printed
 ; Modifies:	AF
 ;		BC
@@ -1959,9 +1984,9 @@ pack_date.early:
 
 print_path:
 		printl	lzh_name,(lzh_name_length)
-		ld	a,(lzh_method+3)
-		cp	"d"
-		ret	nz
+		ld	a,(lzh_dir)
+		or	a
+		ret	z
 		print	msg_separator
 		ret
 
@@ -1985,11 +2010,133 @@ print_target:
 		print	msg_as
 		ld	de,(out_member)
 		call	print_zero
-		ld	a,(lzh_method+3)	; a -lhd- member's ends in "\"
-		cp	"d"
-		ret	nz
+		ld	a,(lzh_dir)	; a directory's ends in "\"
+		or	a
+		ret	z
 		print	msg_separator
 		ret
+
+; print_method - the member's method, for "not supported yet": LZH's
+;   5 characters, or ZIP's name without the spaces after it.
+;
+; Input:	lzh_method, zip_method; archive_format
+; Output:	the method is printed
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+print_method:
+		ld	a,(archive_format)
+		or	a
+		jr	nz,print_method.zip
+		printl	lzh_method,5
+		ret
+print_method.zip:
+		ld	hl,zip_method+7	; B = its length, the spaces off
+		ld	b,7
+print_method.trim:
+		dec	hl
+		ld	a,(hl)
+		cp	CHR_SPACE
+		jr	nz,print_method.print
+		djnz	print_method.trim
+print_method.print:
+		ld	l,b
+		ld	h,0
+		ld	de,zip_method
+		jp	print_length
+
+; open_archive - open the archive named in archive_name, and tell its
+;   format by its first bytes.
+;
+;   "PK" 3 4, a local header, or "PK" 5 6, the end record of an empty
+;   archive, is ZIP: zip_open finds its central directory, reading the
+;   end of the file into copy_buffer. Anything else, a file shorter than
+;   4 bytes included, is read as LZH, from its start.
+;
+; Input:	archive_name
+; Output:	A = 0, ready for the first member
+;		A = what lzh_open, lzh_read or zip_open gave
+;		archive_format: 0 for LZH, 1 for ZIP
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+open_archive:
+		xor	a
+		ld	(archive_format),a
+		ld	de,archive_name
+		call	lzh_open
+		or	a
+		ret	nz
+		ld	de,copy_buffer	; its first 4 bytes
+		ld	hl,4
+		call	lzh_read
+		cp	LZH_TRUNCATED
+		jr	z,open_archive.lzh	; fewer: not ZIP
+		or	a
+		ret	nz
+		ld	hl,copy_buffer
+		ld	a,(hl)
+		cp	"P"
+		jr	nz,open_archive.lzh
+		inc	hl
+		ld	a,(hl)
+		cp	"K"
+		jr	nz,open_archive.lzh
+		inc	hl
+		ld	a,(hl)
+		inc	hl
+		cp	3
+		jr	nz,open_archive.empty
+		ld	a,(hl)
+		cp	4
+		jr	z,open_archive.zip
+		jr	open_archive.lzh
+open_archive.empty:
+		cp	5
+		jr	nz,open_archive.lzh
+		ld	a,(hl)
+		cp	6
+		jr	nz,open_archive.lzh
+open_archive.zip:
+		ld	a,1
+		ld	(archive_format),a
+		ld	de,copy_buffer
+		jp	zip_open
+open_archive.lzh:
+		jp	lzh_rewind
+
+; next_member, skip_member, rewind_archive - lzh.as's or zip.as's
+;   lzh_next_header, lzh_skip_data and lzh_rewind, by archive_format.
+;
+; Input:	archive_format
+; Output:	as the routine's
+; Modifies:	as the routine's
+; Scratch:	none
+
+next_member:
+		ld	a,(archive_format)
+		or	a
+		jp	z,lzh_next_header
+		jp	zip_next
+
+skip_member:
+		ld	a,(archive_format)
+		or	a
+		jp	z,lzh_skip_data
+		jp	zip_skip
+
+rewind_archive:
+		ld	a,(archive_format)
+		or	a
+		jp	z,lzh_rewind
+		jp	zip_rewind
 
 ; print_member - one line of the listing: the member just read.
 ;
@@ -2018,9 +2165,15 @@ print_member:
 		ld	b,10
 		ld	ix,line_text+21
 		call	format_number
-		ld	hl,lzh_method
+		ld	hl,lzh_method	; the method: LZH's 5 characters, or
+		ld	bc,5		;   ZIP's first 6
+		ld	a,(archive_format)
+		or	a
+		jr	z,print_member.method
+		ld	hl,zip_method
+		ld	bc,6
+print_member.method:
 		ld	de,line_text+22
-		ld	bc,5
 		ldir
 		call	format_date
 		printl	line_text,LINE_FIXED
@@ -2289,6 +2442,8 @@ print_totals.word:
 ; msg_damaged		a header is not valid
 ; msg_truncated		the file ends inside a member
 ; msg_level3		a level 3 header
+; msg_empty		a ZIP archive with no members
+; msg_split		ZIP64, or a split archive
 ; msg_list_head		the listing's heading
 ; msg_list_foot		the rule above the totals
 ; msg_file		after a count of 1
@@ -2352,7 +2507,7 @@ msg_usage:
 		defb	CHR_CR,CHR_LF,"$"
 msg_crlf:	defb	CHR_CR,CHR_LF,"$"
 msg_not_lzh:
-		defb	"Not an LZH archive."
+		defb	"Not an LZH or ZIP archive."
 		defb	CHR_CR,CHR_LF,"$"
 msg_damaged:
 		defb	"The archive is damaged: a header is not valid."
@@ -2362,6 +2517,12 @@ msg_truncated:
 		defb	CHR_CR,CHR_LF,"$"
 msg_level3:
 		defb	"Header level 3: UNKAGO reads levels 0, 1 and 2."
+		defb	CHR_CR,CHR_LF,"$"
+msg_empty:
+		defb	"The archive is empty."
+		defb	CHR_CR,CHR_LF,"$"
+msg_split:
+		defb	"ZIP64 and split archives are not read."
 		defb	CHR_CR,CHR_LF,"$"
 msg_list_head:
 		defb	"    Packed   Original Method Date"
@@ -2414,6 +2575,7 @@ pct_text:	defb	"   0%$"
 ; Variables for main and list_archive:
 ;
 ; archive_name		the archive's name, from the command line, and a 0
+; archive_format	0 for LZH, 1 for ZIP: open_archive
 ; members		how many members have been read
 ; listed		how many of them were listed
 ; total_packed		the packed sizes added up, 4 bytes
@@ -2475,6 +2637,7 @@ pct_text:	defb	"   0%$"
 ;
 archive_name:	defs	128
 members:	defs	2
+archive_format:	defs	1
 total_packed:	defs	4
 total_original:	defs	4
 line_text:	defb	"0000000000 0000000000 -lh0-  "

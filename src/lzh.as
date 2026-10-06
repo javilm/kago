@@ -29,6 +29,10 @@ LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 		public	lzh_crc
 		public	lzh_attributes
 		public	lzh_read
+		public	lzh_seek
+		public	lzh_size
+		public	lzh_clean_path
+		public	lzh_dir
 
 		include	lzh.inc		; the results
 		include	common.inc	; dos
@@ -132,6 +136,13 @@ lzh_next_header:
 		call	read_header
 		or	a
 		ret	nz
+		ld	a,(lzh_method+3)	; -lhd-: a directory
+		cp	"d"
+		ld	a,0
+		jr	nz,lzh_next_header.kind
+		inc	a
+lzh_next_header.kind:
+		ld	(lzh_dir),a
 		jp	make_path	; A = LZH_MEMBER from it too
 
 ; read_header - read the next member's header, as it is stored.
@@ -571,6 +582,8 @@ make_path.moved:
 ;   The path is rewritten where it is: writing never gets ahead of
 ;   reading, since every part and separator written was read first.
 ;
+;   Public as lzh_clean_path: zip.as cleans a ZIP member's path with it.
+;
 ; Input:	lzh_name, lzh_name_length
 ; Output:	the same, clean
 ;		A = LZH_MEMBER
@@ -581,6 +594,7 @@ make_path.moved:
 ; Scratch:	clean_end
 ;		part_start
 
+lzh_clean_path:
 clean_path:
 		ld	hl,(lzh_name_length)	; just after the path
 		ld	de,lzh_name
@@ -849,7 +863,8 @@ seek_on:
 
 ; seek - move the archive's file pointer.
 ;
-;   seek_on, above, falls into this with A = 1.
+;   seek_on, above, falls into this with A = 1. Public as lzh_seek:
+;   zip.as seeks to the central directory's headers with it.
 ;
 ; Input:	A = 0, 1 or 2: from the start, from here, from the end
 ;		DE:HL = the offset, signed
@@ -861,6 +876,7 @@ seek_on:
 ;		HL
 ; Scratch:	none
 
+lzh_seek:
 seek:
 		push	af
 		ld	a,(lzh_handle)
@@ -894,6 +910,7 @@ seek:
 ; lzh_level		the header's level, 0 to 2
 ; lzh_crc		the CRC-16 of the member's data, from the header
 ; lzh_attributes	the MS-DOS attributes: byte 19, or type 40h
+; lzh_dir		not 0 for a directory: -lhd-
 ; lzh_rest		read_level2: the header after its base
 ; lzh_header		the base header: 22 bytes, then the rest of a
 ;			level 0 or 1 header, up to 257 in all
@@ -914,6 +931,7 @@ lzh_time:	defs	4
 lzh_level:	defs	1
 lzh_crc:	defs	2
 lzh_attributes:	defs	1
+lzh_dir:	defs	1
 lzh_rest:	defs	2
 lzh_header:	defs	257
 dir_text:	defs	254
