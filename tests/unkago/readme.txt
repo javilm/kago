@@ -106,6 +106,11 @@ lh5bad.lzh
     is 511, which does not exist: the data is not valid. lhasa reports
     a CRC error
     sha256 b78a50192a11c552b0a0224179ce1544ed424f559b05e514755bb87cdf013cbe
+long.lzh
+    lhasa test/archives/lha213/lh5_long.lzh: LHA 2.13, level 1, -lh5-,
+    LONG.TXT, 1241658 bytes of very repetitive text packed into 84000:
+    for SPEED.BAT, which times extracting it, not for TESTS.BAT
+    sha256 8bc9c2c20bf12d0fa50a8ffbfae5e2fc7af88f63fc3be894fa2aff633db37877
 
 The archives from lhasa are distributed under its licence:
 
