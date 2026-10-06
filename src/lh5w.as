@@ -76,7 +76,8 @@ CBIT		equ	9		; bits that count c's lengths
 TBIT		equ	5		; pt's
 PBIT		equ	4		; p's
 OUT_SIZE	equ	1024		; outbuf: written at a time
-WINDOW		equ	8192		; how far back a match may be
+WINDOW		equ	8192		; how far back a match may be: at
+WINDOW_SMALL	equ	4096		;   full strength, and with less
 MAX_MATCH	equ	256		; how long
 THRESHOLD	equ	3		; and how short
 CHAIN		equ	32		; a search's steps at most
@@ -111,8 +112,12 @@ TABLES_SIZE	equ	15327
 ;   head holds no position. The first round puts position 0 in the
 ;   table and searches at 1, after a match of 2 (no match).
 ;
+;   With A = 1, the first time, the text and prev share one segment,
+;   with a 4 KB window: 32 KB of mapper instead of 48 (small, R7).
+;
 ; Input:	DE:HL = the member's size: packing stops when the packed
 ;		size reaches it
+;		A = 0 at full strength, 1 small: the first call decides
 ; Output:	CY set = no mapper memory
 ; Modifies:	AF
 ;		BC
@@ -122,6 +127,7 @@ TABLES_SIZE	equ	15327
 ; Scratch:	none
 
 lh5w_start:
+		ld	(small),a
 		call	forget		; page 2: KAGO's until now
 		ld	(limit),hl
 		ld	(limit+2),de
@@ -152,15 +158,30 @@ lh5w_start:
 		call	zero
 		ld	a,(tables_ready)
 		or	a
-		jr	nz,lh5w_start.ready
+		jp	nz,lh5w_start.ready	; too far for jr
 		fpalloc	tables_fp,TABLES_SIZE	; CY set: out of memory
 		ret	c
 		ld	hl,text_fp
 		call	segalloc
 		ret	c
+		ld	hl,WINDOW
+		ld	(win_size),hl
+		ld	a,(small)
+		or	a
+		jr	nz,lh5w_start.small
 		ld	hl,prev_fp
 		call	segalloc
 		ret	c
+		jr	lh5w_start.got
+lh5w_start.small:
+		ld	hl,text_fp	; small: prev in the text's
+		ld	de,prev_fp	;   segment, from A000h
+		ld	bc,4
+		ldir
+		ld	hl,WINDOW_SMALL
+		ld	(win_size),hl
+		call	patch_small
+lh5w_start.got:
 		ld	a,1
 		ld	(tables_ready),a
 		ld	a,(primslt)	; all three in the primary
@@ -239,13 +260,13 @@ lh5w_data.more:
 		ld	a,h
 		or	l
 		jr	z,lh5w_data.done
-		ld	hl,(top)	; room: WINDOW - (top - r_first + 1)
+		ld	hl,(top)	; room: window - (top - r_first + 1)
 		ld	de,(r_first)
 		or	a
 		sbc	hl,de
 		inc	hl
 		ex	de,hl
-		ld	hl,WINDOW
+		ld	hl,(win_size)
 		or	a
 		sbc	hl,de
 		ld	de,(src_n)	; at most what is left
@@ -321,9 +342,11 @@ copy_in:
 		call	map_text
 		ld	hl,(top)	; DE = where top is in the ring
 		ld	a,h
+p_copy_mask:
 		and	3Fh
 		ld	d,a
 		ld	e,l
+p_copy_size:
 		ld	hl,4000h	; the room to the ring's end
 		or	a
 		sbc	hl,de
@@ -498,12 +521,15 @@ round.counted:
 		call	ring_addr
 		ld	c,(hl)
 		inc	hl
+p_hash_1:
 		res	6,h
 		ld	d,(hl)
 		inc	hl
+p_hash_2:
 		res	6,h
 		ld	e,(hl)
 		inc	hl
+p_hash_3:
 		res	6,h
 round.hash:
 		ld	a,d		; ((C << 8) ^ (D << 4) ^ E) & 7FFh,
@@ -534,6 +560,7 @@ round.hash:
 		ld	d,e
 		ld	e,(hl)
 		inc	hl
+p_hash_4:
 		res	6,h
 		exx
 		dec	b
@@ -665,7 +692,9 @@ prev_put:
 		ld	l,e
 		add	hl,hl
 		ld	a,h
+p_prev_and_1:
 		and	3Fh
+p_prev_or_1:
 		or	80h
 		ld	h,a
 		ld	(hl),c
@@ -750,10 +779,10 @@ round.after:
 		ld	hl,(s_a)
 		inc	hl
 		ld	(r_first),hl
-		ld	a,(big)		; from WINDOW on, the window is full
+		ld	a,(big)		; from window on, the window is full
 		or	a
 		ret	nz
-		ld	de,WINDOW
+		ld	de,(win_size)
 		or	a
 		sbc	hl,de
 		ret	c
@@ -771,49 +800,10 @@ round.after:
 
 ring_addr:
 		ld	a,h
+p_ring_mask:
 		and	3Fh
 		or	80h
 		ld	h,a
-		ret
-
-; hash3 - a position's hash, from its next three bytes.
-;
-;   ((b0 << 8) ^ (b1 << 4) ^ b2) & 7FFh, doubled: head's offset.
-;
-; Input:	HL -> the position's byte, with the text mapped
-; Output:	BC = twice the hash
-; Modifies:	AF
-;		BC
-; Scratch:	none
-
-hash3:
-		push	hl
-		ld	a,(hl)		; b0's low 3 bits: 8 to 10
-		and	7
-		ld	b,a
-		inc	hl
-		res	6,h
-		ld	a,(hl)		; b1, its nibbles swapped
-		rrca
-		rrca
-		rrca
-		rrca
-		ld	c,a
-		and	0Fh		; its high one: 8 to 11
-		xor	b
-		and	7
-		ld	b,a
-		ld	a,c		; its low one: 4 to 7
-		and	0F0h
-		ld	c,a
-		inc	hl
-		res	6,h
-		ld	a,(hl)		; b2: 0 to 7
-		xor	c
-		ld	c,a
-		sla	c
-		rl	b
-		pop	hl
 		ret
 
 ; walk - a search's chain: the positions to compare.
@@ -839,15 +829,15 @@ hash3:
 ; Scratch:	none
 
 walk:
-		ld	hl,WINDOW	; wlim: 8192, or the start
+		ld	hl,(win_size)	; wlim: the window, or the start
 		ld	a,(big)
 		or	a
 		jr	nz,walk.limit
 		ld	hl,(w_s)
-		ld	bc,WINDOW
+		ld	bc,(win_size)
 		or	a
 		sbc	hl,bc
-		ld	hl,WINDOW
+		ld	hl,(win_size)
 		jr	nc,walk.limit
 		ld	hl,(w_s)
 walk.limit:
@@ -883,7 +873,9 @@ walk.next:
 		ex	de,hl		; c = prev[c]
 		add	hl,hl
 		ld	a,h
+p_prev_and_2:
 		and	3Fh
+p_prev_or_2:
 		or	80h
 		ld	h,a
 		ld	e,(hl)
@@ -981,6 +973,7 @@ search.next:
 		ld	l,e
 		add	hl,bc
 		ld	a,h
+p_cand_mask:
 		and	3Fh
 		or	80h
 		ld	h,a
@@ -1012,8 +1005,10 @@ search.byte:
 		cp	(hl)
 		jr	nz,search.differ
 		inc	de
+p_cmp_d:
 		res	6,d
 		inc	hl
+p_cmp_h:
 		res	6,h
 		djnz	search.byte
 		ld	hl,(mx)		; all of them
@@ -1400,6 +1395,38 @@ encode_p:
 		ld	b,a
 		jp	putbits
 
+; patch_small - the code for small packing: the text an 8 KB ring at
+;   8000h, prev 4096 words at A000h, both in one segment.
+;
+;   The masks are in the code, as immediates and as RES instructions,
+;   where they cost nothing at full strength. For small packing each is
+;   changed in place, once, from the table: an 8 KB ring is masked with
+;   1Fh where 16 KB is with 3Fh, wraps with RES 5 where 16 KB wraps
+;   with RES 6, and prev's words start at A0h instead of 80h. map_prev
+;   maps the text's segment, which is prev's too.
+;
+; Input:	patch_list
+; Output:	the code changed
+; Modifies:	AF
+;		B
+;		DE
+;		HL
+; Scratch:	none
+
+patch_small:
+		ld	hl,patch_list
+		ld	b,PATCH_COUNT
+patch_small.next:
+		ld	e,(hl)		; DE -> the byte, A = its new value
+		inc	hl
+		ld	d,(hl)
+		inc	hl
+		ld	a,(hl)
+		inc	hl
+		ld	(de),a
+		djnz	patch_small.next
+		ret
+
 ; map_text, map_prev, map_tables - the text's segment, prev's, or the
 ;   tables' block in page 2, if it isn't there already.
 ;
@@ -1419,6 +1446,7 @@ map_text:
 		ld	a,1
 		jr	map
 map_prev:
+p_map_prev:
 		ld	a,2
 		jr	map
 map_tables:
@@ -2527,6 +2555,8 @@ zero:
 ;			order of c_freq_at to buf_at
 ; t_n, p_n		pt's tree and p's, for make_tree: how many
 ;			symbols, their arrays
+; patch_list		patch_small: where each byte is, and its value
+;			for small packing; PATCH_COUNT of them
 ; weights		make_code: the step between codes of each length,
 ;			1 to 16 bits
 ;
@@ -2534,6 +2564,37 @@ offsets:	defw	C_FREQ,C_LEN,C_CODE,LEFT,RIGHT,DEPTH,HEAP
 		defw	HEAD,BUFFER
 t_n:		defw	T_SYMS,t_freq,pt_len,pt_code
 p_n:		defw	P_SYMS,p_freq,pt_len,pt_code
+PATCH_COUNT	equ	15
+patch_list:	defw	p_copy_mask+1		; and 1Fh: an 8 KB ring
+		defb	1Fh
+		defw	p_copy_size+2		; ld hl,2000h: its size
+		defb	20h
+		defw	p_ring_mask+1
+		defb	1Fh
+		defw	p_cand_mask+1
+		defb	1Fh
+		defw	p_hash_1+1		; res 5,h: it wraps at A000h
+		defb	0ACh
+		defw	p_hash_2+1
+		defb	0ACh
+		defw	p_hash_3+1
+		defb	0ACh
+		defw	p_hash_4+1
+		defb	0ACh
+		defw	p_cmp_h+1
+		defb	0ACh
+		defw	p_cmp_d+1		; res 5,d
+		defb	0AAh
+		defw	p_prev_and_1+1		; prev: 4096 words, at A000h
+		defb	1Fh
+		defw	p_prev_or_1+1
+		defb	0A0h
+		defw	p_prev_and_2+1
+		defb	1Fh
+		defw	p_prev_or_2+1
+		defb	0A0h
+		defw	p_map_prev+1		; map_prev: the text's segment
+		defb	1
 weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 		defw	80h,40h,20h,10h,8,4,2,1
 
@@ -2546,6 +2607,8 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ;			the text's and prev's segments, and the tables'
 ;			block: far pointers, in this order (map)
 ; fast			1 when all three are in the primary mapper
+; small, win_size	1 for small packing (lh5w_start); how far back a
+;			match may be: 8192, or 4096 small
 ; p2cur, p2fast		map: which of them page 2 shows, 0 for none;
 ;			whether p2seg may switch
 ; c_n, c_freq_at, c_len_at, c_code_at
@@ -2623,6 +2686,8 @@ text_fp:	defs	4
 prev_fp:	defs	4
 tables_fp:	defs	4
 fast:		defs	1
+small:		defs	1
+win_size:	defs	2
 p2cur:		defs	1
 p2fast:		defs	1
 c_n:		defs	2

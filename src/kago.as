@@ -60,6 +60,8 @@ FORMAT_PMA	equ	1
 FORMAT_ZIP	equ	2
 MARK_ADDED	equ	1		; a path's marks in path_list: added
 MARK_OLD	equ	2		;   in this run; in the old archive
+FULL_SEGS	equ	4		; memory_check: segments for packing
+SMALL_SEGS	equ	3		;   at full strength, and small
 
 		cseg
 
@@ -80,6 +82,9 @@ MARK_OLD	equ	2		;   in this run; in the old archive
 ;   members to leave out; then to add them. At the end the old archive
 ;   is deleted, and the new one, written as temp_name, renamed into its
 ;   place; if either fails, the new one is left, and KAGO says where.
+;
+;   Before the archive is made, memory_check sees whether the mapper has
+;   room for packing (R7): too little, and KAGO asks.
 ;
 ; Input:	the command line, at COMMAND_TAIL (common.as)
 ; Output:	does not return
@@ -122,16 +127,17 @@ main.archive:
 		ld	b,.NOPAR	; COMMAND2: *** Missing parameter
 		dos	_TERM
 main.files:
+		ld	c,"0"		; /0: everything stored
+		call	switch_given
+		sbc	a,a
+		ld	(storing),a
 		call	open_old	; /A and an archive there: opened
+		call	memory_check	; room for packing, or KAGO asks
 		call	create_archive	; returns only if it was
 		call	progress_init	; on the screen, not with /Q
 		ld	hl,adding_line	; what the line starts with
 		ld	(progress_line),hl
 		call	crc_tables	; CRC-16's table, or CRC-32's
-		ld	c,"0"		; /0: everything stored
-		call	switch_given
-		sbc	a,a
-		ld	(storing),a
 		ld	hl,0
 		ld	(added),hl
 		ld	a,(appending)
@@ -586,6 +592,7 @@ add_entry.again:
 		jr	z,add_entry.crc
 		ld	hl,(fib+FIB_SIZE)	; packing stops at its size
 		ld	de,(fib+FIB_SIZE+2)
+		ld	a,(pack_mode)	; full strength, or small
 		call	lh5w_start	; CY: no memory for its tables
 		jp	c,no_memory
 add_entry.crc:
@@ -847,6 +854,111 @@ pack_or_store.method:
 		ld	de,lzhw_method
 		ld	bc,5
 		ldir
+		ret
+
+; memory_check - whether the mapper has room for packing (R7), before
+;   anything is written.
+;
+;   Full strength takes FULL_SEGS segments: lh5w.as's three (the text,
+;   prev, the tables) and the paths' list. With SMALL_SEGS, it packs
+;   small: a 4 KB window, the text and prev in one segment. With fewer,
+;   it stores. Either way KAGO says so, with both figures, and asks; /Y
+;   answers yes without either line. N stops KAGO, nothing written. ZIP
+;   (stored, for now) and /0 need nothing.
+;
+; Input:	out_format, storing; /Y
+; Output:	pack_mode: 0 full strength, 1 small
+;		storing: 0FFh when there is too little for packing
+;		does not return on N
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+memory_check:
+		ld	a,(out_format)	; ZIP, or /0: nothing to check
+		ld	hl,storing
+		or	(hl)
+		ret	nz
+		call	mapfree		; HL = free segments
+		ld	a,h
+		or	a
+		ret	nz		; 256 or more
+		ld	a,l
+		cp	FULL_SEGS
+		ret	nc		; enough
+		ld	(free_segs),a
+		ld	c,"Y"		; /Y: yes, without a word
+		call	switch_given
+		jr	c,memory_check.yes
+		print	msg_full_needs	; both figures
+		ld	a,(free_segs)
+		ld	l,a
+		ld	h,0
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		call	print_number
+		print	msg_kb_free
+		ld	de,msg_pack_less	; small, or stored
+		ld	a,(free_segs)
+		cp	SMALL_SEGS
+		jr	nc,memory_check.ask
+		ld	de,msg_store_them
+memory_check.ask:
+		dos	_STROUT
+		dos	_CONIN		; A = the answer, echoed
+		push	af
+		print	msg_crlf
+		pop	af
+		call	fold_case
+		cp	"Y"
+		jr	z,memory_check.yes
+		print	msg_stopped	; N: nothing done
+		dos	_TERM0
+memory_check.yes:
+		ld	a,(free_segs)
+		cp	SMALL_SEGS
+		jr	c,memory_check.store
+		ld	a,1		; small
+		ld	(pack_mode),a
+		ret
+memory_check.store:
+		ld	a,0FFh		; too little: stored, as with /0
+		ld	(storing),a
+		ret
+
+; print_number - write a number, without spaces before it.
+;
+; Input:	HL = the number
+; Output:	written to standard output
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+print_number:
+		ld	de,0
+		ld	b,5
+		ld	ix,num_buf+5
+		call	format_number	; IX -> the field, spaces first
+		ld	a,"$"
+		ld	(num_buf+5),a
+		push	ix
+		pop	de
+print_number.space:
+		ld	a,(de)
+		cp	CHR_SPACE
+		jr	nz,print_number.say
+		inc	de
+		jr	print_number.space
+print_number.say:
+		dos	_STROUT
 		ret
 
 ; write_header - the member's header, where the archive is now.
@@ -2150,6 +2262,9 @@ fail_closed:
 ; msg_left		where the new archive is, when it could not take
 ;			the old one's place
 ; temp_ext		the temporary file's extension, and a 0
+; msg_full_needs, msg_kb_free, msg_pack_less, msg_store_them, msg_stopped
+;			memory_check's warning, its questions, and N's
+;			line
 ; msg_adding, msg_replacing, msg_ok, msg_skipping, msg_colon, msg_crlf,
 ; msg_dotdot, msg_already
 ;			adding's words, put together per member
@@ -2229,6 +2344,11 @@ msg_ok:		defb	" OK",CHR_CR,CHR_LF,"$"
 msg_skipping:	defb	"Skipping $"
 msg_colon:	defb	": $"
 msg_crlf:	defb	CHR_CR,CHR_LF,"$"
+msg_full_needs:	defb	"Full packing needs 64 KB of mapper memory, but only $"
+msg_kb_free:	defb	" KB are free.",CHR_CR,CHR_LF,"$"
+msg_pack_less:	defb	"Pack with less? (Y/N) $"
+msg_store_them:	defb	"Store the files? (Y/N) $"
+msg_stopped:	defb	"Nothing written.",CHR_CR,CHR_LF,"$"
 msg_dotdot:	defb	": a path with .. cannot be stored"
 		defb	CHR_CR,CHR_LF,"$"
 msg_already:	defb	": added already",CHR_CR,CHR_LF,"$"
@@ -2246,7 +2366,10 @@ end_mark:	defb	0
 ; files_at		where the words after it start
 ; write_name		the file written: archive_name, or temp_name
 ; appending		not 0 when /A adds to an archive there
-; storing		not 0 with /0
+; storing		not 0 with /0, or too little memory to pack
+; pack_mode, free_segs	memory_check: 0 full strength, 1 small; the
+;			free segments it found
+; num_buf		print_number: 5 digits and a "$"
 ; collecting		not 0 in /A's first walk
 ; old_drive, old_cluster, old_entry
 ;			the old archive's drive, first cluster and name,
@@ -2299,6 +2422,9 @@ files_at:	defs	2
 write_name:	defs	2
 appending:	defs	1
 storing:	defs	1
+pack_mode:	defs	1
+free_segs:	defs	1
+num_buf:	defs	6
 collecting:	defs	1
 old_drive:	defs	1
 old_cluster:	defs	2

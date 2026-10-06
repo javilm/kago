@@ -460,12 +460,32 @@ echo --- unkago /O /D:pout k8.lzh>>..\results.txt
 ..\..\build\unkago /O /D:pout k8.lzh>>..\results.txt
 cd ..\..
 
-rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
-rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves
-rem too little, and UNKAGO must refuse; with more memory it extracts.
-rem The result goes to TESTS\MEMORY.TXT, read on the Mac, not compared,
-rem since it depends on the machine.
-ramdisk 320 /d>tests\memory.txt
+rem MEMORY takes mapper memory with a RAM disk, and asks for more. On a
+rem plain FS-A1GT (512 KB, about 336 KB free), a 288 KB RAM disk leaves
+rem about 48 KB: too little for KAGO's full packing (64 KB). KAGO says
+rem so and asks; N (TESTS\NO.TXT) stops it, and /Y packs KIN\BIG.DAT
+rem small, a 4 KB window, into MEM\M1.LZH. A 304 KB one leaves about
+rem 32 KB, and Y (TESTS\YES.TXT) stores it, into MEM\M2.LZH. A 320 KB
+rem one leaves too little for FAR7.LZH's 64 KB window, and UNKAGO must
+rem refuse; with more memory it extracts. The results go to
+rem TESTS\MEMORY.TXT, read on the Mac, not compared, since they depend
+rem on the machine; M1.LZH and M2.LZH are compared with the model.
+ramdisk 288 /d>tests\memory.txt
+ramdisk>>tests\memory.txt
+cd tests\out
+del mem\m1.lzh
+del mem\m2.lzh
+..\..\build\kago mem\m1.lzh kin\big.dat<..\no.txt>>..\memory.txt
+..\..\build\kago /Y mem\m1.lzh kin\big.dat>>..\memory.txt
+..\..\build\unkago /L mem\m1.lzh>>..\memory.txt
+ramdisk 0 /d
+ramdisk 304 /d>>..\memory.txt
+ramdisk>>..\memory.txt
+..\..\build\kago mem\m2.lzh kin\big.dat<..\yes.txt>>..\memory.txt
+..\..\build\unkago /L mem\m2.lzh>>..\memory.txt
+ramdisk 0 /d
+cd ..\..
+ramdisk 320 /d>>tests\memory.txt
 ramdisk>>tests\memory.txt
 build\unkago /D:tests\out\mem tests\unkago\far7.lzh>>tests\memory.txt
 ramdisk 0 /d
