@@ -160,39 +160,81 @@ UNKAGO cannot extract yet: use /L to list.
 
 *** File not found
 --- unkago /L tests\unkago\multi0.lzh
-README.TXT
-A$B.TXT
-EMPTY.DAT
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        20         20 -lh0-  2026-10-06 17:59 README.TXT
+        28         28 -lh0-  2026-10-06 17:59 A$B.TXT
+         0          0 -lh0-  2026-10-06 17:59 EMPTY.DAT
+---------- ---------- ------                  ------------
+        48         48        3 files
 --- unkago /L tests\unkago\multi1.lzh
-README.TXT
-A$B.TXT
-EMPTY.DAT
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        20         20 -lh0-  2026-10-06 17:59 README.TXT
+        28         28 -lh0-  2026-10-06 17:59 A$B.TXT
+         0          0 -lh0-  2026-10-06 17:59 EMPTY.DAT
+---------- ---------- ------                  ------------
+        48         48        3 files
 --- unkago /L tests\unkago\multi2.lzh
-README.TXT
-A$B.TXT
-EMPTY.DAT
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        20         20 -lh0-  2026-10-06 08:59 README.TXT
+        28         28 -lh0-  2026-10-06 08:59 A$B.TXT
+         0          0 -lh0-  2026-10-06 08:59 EMPTY.DAT
+---------- ---------- ------                  ------------
+        48         48        3 files
 --- unkago /L tests\unkago\l0lh1.lzh
-GPL-2
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      7518      18092 -lh1-  2010-01-01 00:00 GPL-2
+---------- ---------- ------                  ------------
+      7518      18092        1 file
 --- unkago /L tests\unkago\l0lh7.lzh
-gpl-2
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      6832      18092 -lh7-  2010-01-01 01:00 gpl-2
+---------- ---------- ------                  ------------
+      6832      18092        1 file
 --- unkago /L tests\unkago\l1lh5.lzh
-GPL-2
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      7004      18092 -lh5-  2010-01-01 00:00 GPL-2
+---------- ---------- ------                  ------------
+      7004      18092        1 file
 --- unkago /L tests\unkago\l1lh6.lzh
-gpl-2
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      6832      18092 -lh6-  2010-01-01 01:00 gpl-2
+---------- ---------- ------                  ------------
+      6832      18092        1 file
 --- unkago /L tests\unkago\l2lh5.lzh
-gpl-2
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      6996      18092 -lh5-  2010-01-01 00:00 gpl-2
+---------- ---------- ------                  ------------
+      6996      18092        1 file
 --- unkago /L tests\unkago\l2lhx.lzh
-GPL-2
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      6828      18092 -lhx-  2013-07-24 13:41 GPL-2
+---------- ---------- ------                  ------------
+      6828      18092        1 file
 --- unkago /L tests\unkago\l3lh5.lzh
 Header level 3: UNKAGO reads levels 0, 1 and 2.
 --- unkago /L tests\unkago\badsum.lzh
-README.TXT
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        20         20 -lh0-  2026-10-06 17:59 README.TXT
 The archive is damaged: a header is not valid.
 --- unkago /L tests\unkago\cuthead.lzh
-README.TXT
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        20         20 -lh0-  2026-10-06 17:59 README.TXT
 The archive ends in the middle of a member.
 --- unkago /L tests\unkago\cutdata.lzh
-gpl-2
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      6996      18092 -lh5-  2010-01-01 00:00 gpl-2
 The archive ends in the middle of a member.
 --- unkago /L tests\unkago\notlzh.txt
 Not an LZH archive.

@@ -7,8 +7,9 @@
 ; read. The layouts follow lhasa (reference/lhasa, lib/lha_file_header.c
 ; and lib/ext_header.c), which reads all three the same way.
 ;
-; Phase 1 keeps only what the listing needs: the name, and where the
-; next header starts. Directories, sizes, dates and CRCs come later.
+; Phase 1 keeps what the listing needs: the name, the method, the
+; packed and original sizes, the date and the level. Directories and
+; CRCs come later.
 
 LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 
@@ -17,6 +18,11 @@ LZH_INCLUDED	equ	1		; lzh.inc: not our names as extrn
 		public	lzh_skip_data
 		public	lzh_name
 		public	lzh_name_length
+		public	lzh_method
+		public	lzh_packed
+		public	lzh_original
+		public	lzh_time
+		public	lzh_level
 
 		include	lzh.inc		; the results
 		include	common.inc	; dos
@@ -130,10 +136,12 @@ lzh_next_header.not_end:
 		ld	a,(lzh_header+6)
 		cp	"-"
 		jr	nz,lzh_next_header.damaged
-		ld	hl,(lzh_header+7)	; the packed size, 4 bytes
-		ld	(lzh_packed),hl
-		ld	hl,(lzh_header+9)
-		ld	(lzh_packed+2),hl
+		ld	hl,lzh_header+2	; the method, the packed and original
+		ld	de,lzh_method	;   sizes and the time: 17 bytes at 2,
+		ld	bc,17		;   in the same order
+		ldir
+		ld	a,(lzh_header+20)
+		ld	(lzh_level),a
 		ld	a,(lzh_header+20)
 		cp	2
 		jp	z,read_level2
@@ -517,10 +525,20 @@ seek:
 ; lzh_handle		the archive's file handle
 ; lzh_size		the archive's size, 4 bytes
 ; lzh_position		where lzh_skip_data left the file pointer
-; lzh_packed		the size of the member's data, 4 bytes
+; lzh_method		the method, 5 characters: "-lh5-"
+; lzh_packed		the size of the member's data, 4 bytes; for
+;			level 1, extended headers taken off
+; lzh_original		the member's size, once extracted, 4 bytes
+; lzh_time		the date and time, 4 bytes: MS-DOS time and date
+;			words (levels 0, 1), or seconds since 1970 UTC
+;			(level 2)
+; lzh_level		the header's level, 0 to 2
 ; lzh_rest		read_level2: the header after its base
 ; lzh_header		the base header: 22 bytes, then the rest of a
 ;			level 0 or 1 header, up to 257 in all
+;
+; lzh_method to lzh_time are copied from the header in one go, so they
+; stay together and in this order.
 ;
 lzh_name:	defs	255
 lzh_name_length:
@@ -528,7 +546,11 @@ lzh_name_length:
 lzh_handle:	defs	1
 lzh_size:	defs	4
 lzh_position:	defs	4
+lzh_method:	defs	5
 lzh_packed:	defs	4
+lzh_original:	defs	4
+lzh_time:	defs	4
+lzh_level:	defs	1
 lzh_rest:	defs	2
 lzh_header:	defs	257
 

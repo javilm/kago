@@ -13,6 +13,9 @@
 		extrn	safe_p2restore
 		extrn	first_argument
 		extrn	print_length
+		extrn	divide_by_c
+		extrn	format_padded
+		extrn	format_number
 
 		include	alloc.inc	; MapperHeap: heapinit, p2restore...
 

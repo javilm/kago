@@ -12,6 +12,9 @@
 		public	safe_p2restore
 		public	first_argument
 		public	print_length
+		public	divide_by_c
+		public	format_padded
+		public	format_number
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	ascii.inc	; CHR_SPACE, CHR_TAB
@@ -246,6 +249,105 @@ print_length:
 		ld	b,STDOUT
 		call	safe_p2restore	; keeps B, DE and HL
 		system	_WRITE
+		ret
+
+; divide_by_c - divide DE:HL by C.
+;
+;   Long division, one bit at a time: 32 rounds of shifting the dividend
+;   left into A and taking C out of A when it fits. C must be 1 to 128,
+;   so that A, at most 2C - 1 after a shift, never overflows.
+;
+; Input:	DE:HL = the dividend
+;		C = the divisor, 1 to 128
+; Output:	DE:HL = the quotient
+;		A = the remainder
+; Modifies:	AF
+;		B
+;		DE
+;		HL
+; Scratch:	none
+
+divide_by_c:
+		ld	b,32
+		xor	a
+divide_by_c.bit:
+		add	hl,hl		; DE:HL one bit left, the top
+		rl	e		;   bit into A
+		rl	d
+		rla
+		cp	c
+		jr	c,divide_by_c.next	; C does not fit yet
+		sub	c
+		inc	l		; a 1 bit in the quotient
+divide_by_c.next:
+		djnz	divide_by_c.bit
+		ret
+
+; format_padded - write DE:HL in decimal, B digits, zeros in front.
+;
+;   The digits are written from the right, a division by 10 each, into
+;   the B bytes that end just before IX.
+;
+; Input:	DE:HL = the number
+;		B = how many digits, 1 to 10
+;		IX -> just after where they go
+; Output:	the digits, in ASCII
+;		IX -> the first of them
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+format_padded:
+format_padded.digit:
+		push	bc
+		ld	c,10
+		call	divide_by_c	; A = the last digit
+		pop	bc
+		add	a,"0"
+		dec	ix
+		ld	(ix+0),a
+		djnz	format_padded.digit
+		ret
+
+; format_number - write DE:HL in decimal, B characters wide,
+;   right-aligned.
+;
+;   As format_padded, then the zeros in front become spaces; the last
+;   digit stays, so 0 is written as 0.
+;
+; Input:	DE:HL = the number
+;		B = the width, 1 to 10
+;		IX -> just after where it goes
+; Output:	the number, spaces in front
+;		IX -> the start of the field
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+format_number:
+		ld	a,b
+		push	af		; A = the width, for later
+		call	format_padded
+		pop	af
+		dec	a
+		ret	z		; one digit: nothing to blank
+		ld	b,a
+		push	ix
+format_number.blank:
+		ld	a,(ix+0)
+		cp	"0"
+		jr	nz,format_number.done
+		ld	(ix+0),CHR_SPACE
+		inc	ix
+		djnz	format_number.blank
+format_number.done:
+		pop	ix
 		ret
 
 ; safe_p2restore - p2restore, keeping the registers it would destroy.

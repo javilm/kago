@@ -20,5 +20,10 @@ LZH_LEVEL3	equ	4		; a level 3 header, not read
 		extrn	lzh_skip_data
 		extrn	lzh_name	; the member's name, as stored
 		extrn	lzh_name_length	; a word: 0 to 255
+		extrn	lzh_method	; 5 characters
+		extrn	lzh_packed	; 4 bytes
+		extrn	lzh_original	; 4 bytes
+		extrn	lzh_time	; 4 bytes, by level
+		extrn	lzh_level	; 0 to 2
 		endif
 
