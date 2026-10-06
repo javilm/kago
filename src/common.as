@@ -12,6 +12,7 @@
 		public	switch_value
 		public	safe_p2restore
 		public	first_argument
+		public	next_argument
 		public	skip_word
 		public	print_length
 		public	divide_by_c
@@ -20,6 +21,7 @@
 		public	print_zero
 		public	print_explanation
 		public	kanji_lead
+		public	fold_case
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	ascii.inc	; CHR_SPACE, CHR_TAB
@@ -226,10 +228,14 @@ skip_word:
 ;   Words are separated by spaces and tabs, and a word that starts with
 ;   "/" is a switch and is skipped whole, as next_switch reads them.
 ;
-; Input:	none
+;   next_argument, its second entry, starts where DE points rather than
+;   at the line's start: the next such word, after one already read.
+;
+; Input:	next_argument: DE -> where to start, in the command line
 ; Output:	A = 0 when there is none; otherwise
 ;		A = B = its length, 1 to 127
 ;		HL -> its first character
+;		DE -> just after it
 ; Modifies:	AF
 ;		B
 ;		DE
@@ -238,6 +244,7 @@ skip_word:
 
 first_argument:
 		ld	de,COMMAND_TAIL
+next_argument:
 first_argument.next:
 		ld	a,(de)
 		or	a
@@ -467,6 +474,21 @@ kanji_lead:
 		pop	hl
 		pop	de
 		pop	bc
+		ret
+
+; fold_case - a-z to A-Z.
+;
+; Input:	A
+; Output:	A, upper case if it was a lower case letter
+; Modifies:	AF
+; Scratch:	none
+
+fold_case:
+		cp	"a"
+		ret	c
+		cp	"z"+1
+		ret	nc
+		sub	"a"-"A"
 		ret
 
 ; safe_p2restore - p2restore, keeping the registers it would destroy.

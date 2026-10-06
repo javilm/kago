@@ -6,6 +6,7 @@ lh5.tro				; the -lh5- decoder
 inflate.tro			; deflate
 names.tro			; the MSX-DOS names
 zip.tro				; reading ZIP archives
+progress.tro			; the progress line, shared with KAGO
 common.tro			; shared with KAGO and MAPTEST
 alloc.tro			; MapperHeap
 

@@ -8,6 +8,7 @@ set TATARA=src\include
 
 echo === Assembling...
 tatara /q src\kago.as kago.tro
+tatara /q src\lzhw.as lzhw.tro
 tatara /q src\unkago.as unkago.tro
 tatara /q src\lzh.as lzh.tro
 tatara /q src\crc.as crc.tro
@@ -15,6 +16,7 @@ tatara /q src\lh5.as lh5.tro
 tatara /q src\inflate.as inflate.tro
 tatara /q src\names.as names.tro
 tatara /q src\zip.as zip.tro
+tatara /q src\progress.as progress.tro
 tatara /q src\common.as common.tro
 tatara /q src\alloc.as alloc.tro
 tatara /q src\maptest.as maptest.tro

@@ -1,5 +1,8 @@
 ; kago.lnk - the modules of KAGO, in link order
 kago.tro			; the entry point comes first
+lzhw.tro			; writing LZH headers
+crc.tro				; the CRC-16, shared with UNKAGO
+progress.tro			; the progress line, shared with UNKAGO
 common.tro			; shared with UNKAGO and MAPTEST
 alloc.tro			; MapperHeap
 

@@ -13,6 +13,7 @@
 		extrn	switch_value
 		extrn	safe_p2restore
 		extrn	first_argument
+		extrn	next_argument
 		extrn	skip_word
 		extrn	print_length
 		extrn	divide_by_c
@@ -21,6 +22,7 @@
 		extrn	print_zero
 		extrn	print_explanation
 		extrn	kanji_lead
+		extrn	fold_case
 
 		include	alloc.inc	; MapperHeap: heapinit, p2restore...
 
