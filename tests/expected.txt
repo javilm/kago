@@ -329,6 +329,12 @@ Extracting ONE.DAT OK
 Extracting ZERO.DAT OK
 --- unkago /O /D:lh5 ..\unkago\lh5bad.lzh
 Extracting BAD.DAT data error
+--- unkago /O /D:lh5 ..\unkago\l0lh4.lzh
+Extracting gpl-2 OK
+--- unkago /O /D:lh5 ..\unkago\far6.lzh
+Extracting FAR.DAT OK
+--- unkago /O /D:lh5 ..\unkago\far7.lzh
+Extracting FAR.DAT OK
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

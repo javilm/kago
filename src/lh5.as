@@ -1,30 +1,41 @@
-; lh5.as - the -lh5- decoder: LZSS with static Huffman codes, as LHA
-; 2.x writes it.
+; lh5.as - the -lh4- to -lh7- decoder: LZSS with static Huffman codes,
+; as LHA 2.x writes it.
 ;
 ; A member's data is a series of blocks. Each block starts with its
 ; size in symbols and three code tables: the lengths of the codes that
 ; send the next table's lengths, the codes for the 510 literals and
-; match lengths, and the codes for the 14 kinds of match distance. A
+; match lengths, and the codes for the kinds of match distance. A
 ; symbol under 256 is a byte; 256 and up is a match of (symbol - 253)
-; bytes, copied from as far back in the output as the distance says,
-; up to 8 KB: the window.
+; bytes, copied from as far back in the output as the distance says:
+; the window. The four methods differ only in how far back that can
+; be, and so in how many kinds of distance there are:
+;
+;	-lh4-, -lh5-	 8 KB*	14 kinds, counted in 4 bits
+;	-lh6-		32 KB	16 kinds, counted in 5 bits
+;	-lh7-		64 KB	17 kinds, counted in 5 bits
+;
+; (* -lh4-'s encoder only looks 4 KB back; its data is laid out as
+; -lh5-'s, and decodes the same way.)
 ;
 ; Symbols are decoded through lookup tables, as LHA does: the next 12
 ; bits (8 for distances) index a table that holds the symbol, or, for a
 ; longer code, the root of a small tree walked one bit at a time. The
-; tables take 12780 bytes, which do not fit below 8000h beside
-; everything else, so they live in a mapper block from MapperHeap,
-; mapped into page 2 while decoding. MSX-DOS needs page 2 back for every
-; call, which the dos macro gives it, so after each read the tables
-; are mapped in again (map_tables).
+; tables take 12780 bytes, in a MapperHeap block.
 ;
-; The window is the caller's buffer, below 8000h, which MSX-DOS can
-; write from: unkago's copy_buffer. lh5_read fills it from its start
-; with the next part of the output, up to its whole 8 KB; each part
-; but the last is 8 KB, so the window's index and the position in the
-; part are the same, and the 8 KB before it are still there for
-; matches to copy from. LHA starts the window full of spaces, and so
-; does lh5_start: a match may reach back before the first byte.
+; The output goes, a part of up to 8 KB at a time, into the caller's
+; buffer below 8000h, which MSX-DOS can write from: unkago's
+; copy_buffer. The window is a ring of 8, 32 or 64 KB in whole mapper
+; segments (segalloc); each part is copied into it, in one go, when the
+; next part is asked for. So a match whose source is in the current
+; part copies within the buffer, and only one that reaches further back
+; reads the ring. LHA starts the window full of spaces; here a source
+; before the first byte of output reads as a space instead, which saves
+; filling up to 64 KB for every member.
+;
+; Page 2 holds the tables or one segment of the ring, never both, so
+; "page2" says which, and each is mapped in only when it is not there
+; already. MSX-DOS needs page 2 back for every call, which the dos macro
+; gives it; after a read, the tables are mapped in again.
 ;
 ; The formats and the table builder follow LHa for UNIX 1.14i
 ; (reference/lha-unix: src/huf.c, maketbl.c, slide.c), checked step
@@ -45,16 +56,15 @@ LH5_INCLUDED	equ	1		; lh5.inc: not our names as extrn
 		include	errors.inc	; .NORAM
 		include	ascii.inc	; CHR_SPACE
 
-WINDOW_SIZE	equ	8192		; the window: 8 KB for -lh5-
-WINDOW_MASK	equ	1Fh		; a position's high byte, wrapped
 C_SYMS		equ	510		; literal and length symbols
 T_SYMS		equ	19		; code length symbols
-P_SYMS		equ	14		; distance symbols, for 8 KB
 TBIT		equ	5		; bits that count T_SYMS's lengths
 CBIT		equ	9		; bits that count C_SYMS's lengths
-PBIT		equ	4		; bits that count P_SYMS's lengths
-NPT		equ	128		; room for T_SYMS's or P_SYMS's lengths
+NPT		equ	128		; room for T_SYMS's or p_syms' lengths
 IN_SIZE		equ	2048		; in_buf: the data read at a time
+SEG_MASK	equ	3Fh		; an offset's high byte, in a segment
+PAGE_TABLES	equ	4		; page2: the tables are mapped in
+PAGE_NONE	equ	0FFh		; page2: unknown, after MSX-DOS
 
 ; The tables' block, mapped at "tables":
 C_TABLE		equ	0		; 4096 words: 12 bits to a symbol
@@ -69,14 +79,17 @@ ROW		equ	34		; mt_count, mt_weight, mt_start:
 
 ; lh5_start - get ready to decode the member just read.
 ;
-;   The first time, the tables' block is allocated; it is kept for
-;   every member after. The window is filled with spaces, the bit
-;   reader primed with 16 bits, and the first lh5_read starts a block.
+;   The method sets the kinds of distance and the window's size. The
+;   first time, the tables' block is allocated, and the window's
+;   segments as a member first needs them; all are kept for the members
+;   after. The ring starts empty, the bit reader is primed with 16 bits,
+;   and the first lh5_read starts a block.
 ;
-; Input:	DE -> the window, WINDOW_SIZE bytes below 8000h
+; Input:	B = the method's digit: "4" to "7"
+;		DE -> the output buffer, 8 KB, below 8000h
 ;		lzh_packed (lzh.as): the size of the member's data
 ; Output:	A = 0, ready
-;		A = .NORAM: no mapper memory for the tables
+;		A = .NORAM: no mapper memory for the tables or the window
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -84,23 +97,46 @@ ROW		equ	34		; mt_count, mt_weight, mt_start:
 ; Scratch:	none
 
 lh5_start:
-		ld	(window),de
+		ld	(outbuf),de
+		ld	a,b		; its row in lh_methods
+		sub	"4"
+		ld	c,a
+		add	a,a
+		add	a,a
+		add	a,c		; 5 bytes a row
+		ld	e,a
+		ld	d,0
+		ld	hl,lh_methods
+		add	hl,de
+		ld	de,p_syms	; p_syms, p_bits, win_mask, win_segs
+		ld	bc,5
+		ldir
 		ld	a,(tables_ready)
 		or	a
-		jr	nz,lh5_start.ready
+		jr	nz,lh5_start.window
 		fpalloc	tables_fp,TABLES_SIZE	; CY set: out of memory
 		ld	a,.NORAM	; COMMAND2: *** Not enough memory
 		ret	c
 		ld	a,1
 		ld	(tables_ready),a
+lh5_start.window:
+		ld	a,(win_have)	; the segments still to get
+		ld	hl,win_segs
+		cp	(hl)
+		jr	nc,lh5_start.ready
+		add	a,a		; its far pointer: win_fp + 4 * n
+		add	a,a
+		ld	e,a
+		ld	d,0
+		ld	hl,win_fp
+		add	hl,de
+		call	segalloc	; CY set: none free
+		ld	a,.NORAM
+		ret	c
+		ld	hl,win_have
+		inc	(hl)
+		jr	lh5_start.window
 lh5_start.ready:
-		ld	hl,(window)	; spaces, as LHA starts it
-		ld	(hl),CHR_SPACE
-		ld	d,h
-		ld	e,l
-		inc	de
-		ld	bc,WINDOW_SIZE-1
-		ldir
 		ld	hl,(lzh_packed)	; the data still to read
 		ld	(lh5_left),hl
 		ld	hl,(lzh_packed+2)
@@ -110,22 +146,26 @@ lh5_start.ready:
 		ld	(blocksize),hl
 		ld	(match_left),hl
 		ld	(bitbuf),hl
+		ld	(win_head),hl
+		ld	(part_len),hl
 		xor	a
 		ld	(bitcnt),a
 		ld	(lh5_error),a
+		ld	(wrapped),a
 		call	map_tables
 		ld	b,16		; the first 16 bits
 		call	fill_bits
 		ld	a,(lh5_error)
 		ret
 
-; lh5_read - decode the next HL bytes of the member into the window.
+; lh5_read - decode the next HL bytes of the member into the buffer.
 ;
-;   A match can end beyond the part asked for: what is left of it,
-;   and where it copies from, are kept for the next call.
+;   The part before, if any, goes into the ring first. A match can end
+;   beyond the part asked for: what is left of it, and its distance,
+;   are kept for the next call.
 ;
-; Input:	HL = how many, 1 to WINDOW_SIZE
-; Output:	A = 0, and the bytes at the start of the window
+; Input:	HL = how many, 1 to 8192
+; Output:	A = 0, and the bytes at the start of the buffer
 ;		A = LH5_BAD: the data is not valid
 ;		A = LZH_TRUNCATED, or an MSX-DOS error, from reading
 ; Modifies:	AF
@@ -138,7 +178,9 @@ lh5_start.ready:
 
 lh5_read:
 		ld	(want),hl
-		call	map_tables
+		ld	a,PAGE_NONE	; MSX-DOS has had page 2
+		ld	(page2),a
+		call	ring_append	; the part before, into the ring
 		ld	hl,0
 		ld	(pos),hl
 lh5_read.next:
@@ -167,40 +209,44 @@ lh5_read.match:
 		sbc	hl,de
 		ld	(match_left),hl
 		call	decode_p	; HL = the distance, less 1
-		ex	de,hl
-		ld	hl,(pos)	; from pos - distance - 1
+		ld	(match_dist),hl
+lh5_read.copy:
+		ld	hl,(match_left)
+		dec	hl
+		ld	(match_left),hl
+		ld	hl,(match_dist)	; in this part: distance < pos
+		ld	de,(pos)
+		or	a
+		sbc	hl,de
+		jr	c,lh5_read.near
+		ex	de,hl		; further back: the ring, at
+		ld	hl,(win_head)	; win_head - (distance - pos) - 1
 		or	a
 		sbc	hl,de
 		dec	hl
-		ld	a,h
-		and	WINDOW_MASK
-		ld	h,a
-		ld	(match_src),hl
-		jr	lh5_read.next
-lh5_read.copy:
+		call	ring_byte	; A = the byte
+		jr	lh5_read.put
+lh5_read.near:
+		ld	hl,(pos)	; buffer[pos - distance - 1]
+		ld	de,(match_dist)
+		or	a
+		sbc	hl,de
 		dec	hl
-		ld	(match_left),hl
-		ld	hl,(match_src)
-		push	hl
-		ld	de,(window)
+		ld	de,(outbuf)
 		add	hl,de
-		ld	c,(hl)		; the byte
-		pop	hl
-		inc	hl
-		ld	a,h
-		and	WINDOW_MASK	; wrapped at 8 KB
-		ld	h,a
-		ld	(match_src),hl
-		ld	a,c
+		ld	a,(hl)
+lh5_read.put:
 		call	put_byte
 		jr	lh5_read.next
 lh5_read.done:
+		ld	hl,(want)	; for the ring, next time
+		ld	(part_len),hl
 		xor	a
 		ret
 
-; put_byte - A at the window's pos, and pos one on.
+; put_byte - A at the buffer's pos, and pos one on.
 ;
-; Input:	A, pos, window
+; Input:	A, pos, outbuf
 ; Output:	pos + 1
 ; Modifies:	DE
 ;		HL
@@ -208,12 +254,150 @@ lh5_read.done:
 
 put_byte:
 		ld	hl,(pos)
-		ld	de,(window)
+		ld	de,(outbuf)
 		add	hl,de
 		ld	(hl),a
 		ld	hl,(pos)
 		inc	hl
 		ld	(pos),hl
+		ret
+
+; ring_byte - the byte at a place in the ring.
+;
+;   Until the ring has wrapped once, a place at or after win_head was
+;   never written: it is before the member's first byte, a space.
+;
+; Input:	HL = the place, not yet masked
+; Output:	A = the byte
+; Modifies:	AF
+;		DE
+;		HL
+; Scratch:	none
+
+ring_byte:
+		ld	a,(win_mask+1)	; masked to the ring's size
+		and	h
+		ld	h,a
+		ld	a,(win_mask)
+		and	l
+		ld	l,a
+		ld	a,(wrapped)
+		or	a
+		jr	nz,ring_byte.written
+		ld	de,(win_head)
+		or	a
+		sbc	hl,de
+		add	hl,de
+		ld	a,CHR_SPACE
+		ret	nc		; at or after win_head: a space
+ring_byte.written:
+		push	hl
+		ld	a,h		; segment place >> 14
+		rlca
+		rlca
+		and	3
+		call	map_window
+		pop	hl
+		ld	a,h		; 8000h + the offset in it
+		and	SEG_MASK
+		or	80h
+		ld	h,a
+		ld	a,(hl)
+		ret
+
+; ring_append - the part last decoded, from the buffer into the ring.
+;
+;   It is copied in pieces that end where a segment or the ring does,
+;   whichever comes first, each with one LDIR. The ring wraps at its
+;   size; win_head is where the next byte goes.
+;
+; Input:	part_len bytes at outbuf, win_head
+; Output:	win_head moved on, wrapped set once it has wrapped
+;		part_len = 0
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+ring_append:
+		ld	hl,(part_len)
+		ld	(app_left),hl
+		ld	hl,(outbuf)
+		ld	(app_src),hl
+ring_append.piece:
+		ld	hl,(app_left)
+		ld	a,h
+		or	l
+		jr	z,ring_append.done
+		ld	hl,(win_head)	; room to the segment's end, less 1
+		ld	a,h
+		and	SEG_MASK
+		ld	h,a
+		ex	de,hl
+		ld	hl,3FFFh
+		or	a
+		sbc	hl,de
+		push	hl
+		ld	hl,(win_mask)	; room to the ring's end, less 1
+		ld	de,(win_head)
+		or	a
+		sbc	hl,de
+		pop	de		; the smaller of the two, plus 1
+		or	a
+		sbc	hl,de
+		add	hl,de
+		jr	c,ring_append.room
+		ex	de,hl
+ring_append.room:
+		inc	hl
+		ld	de,(app_left)	; and no more than is left
+		or	a
+		sbc	hl,de
+		add	hl,de
+		jr	c,ring_append.size
+		ex	de,hl
+ring_append.size:
+		ld	(app_n),hl
+		ld	a,(win_head+1)	; map the segment
+		rlca
+		rlca
+		and	3
+		call	map_window
+		ld	hl,(win_head)	; DE -> 8000h + the offset
+		ld	a,h
+		and	SEG_MASK
+		or	80h
+		ld	h,a
+		ex	de,hl
+		ld	hl,(app_src)
+		ld	bc,(app_n)
+		ldir
+		ld	(app_src),hl
+		ld	hl,(win_head)	; win_head + n, wrapped
+		ld	bc,(app_n)
+		add	hl,bc
+		ld	a,(win_mask+1)
+		and	h
+		ld	h,a
+		ld	a,(win_mask)
+		and	l
+		ld	l,a
+		ld	(win_head),hl
+		ld	a,h
+		or	l
+		jr	nz,ring_append.left
+		ld	a,1		; back at 0: it has wrapped
+		ld	(wrapped),a
+ring_append.left:
+		ld	hl,(app_left)
+		ld	bc,(app_n)
+		or	a
+		sbc	hl,bc
+		ld	(app_left),hl
+		jp	ring_append.piece	; too far for jr
+ring_append.done:
+		ld	(part_len),hl	; HL = 0
 		ret
 
 ; lh5_finish - pass over what is left of the member's data, unread.
@@ -237,20 +421,51 @@ lh5_finish:
 		ld	(lzh_packed+2),hl
 		jp	lzh_skip_data	; from here, the rest
 
-; map_tables - map the tables' block into page 2, again.
+; tables_in - the tables in page 2, if they are not there already.
 ;
-; Input:	tables_fp
-; Output:	tables -> the block, in page 2
+;   map_tables, its second entry, maps them in whatever page 2 holds.
+;
+; Input:	page2, tables_fp
+; Output:	tables -> the block, in page 2; page2 = PAGE_TABLES
 ; Modifies:	AF
-;		BC
 ;		DE
 ;		HL
 ; Scratch:	none
 
+tables_in:
+		ld	a,(page2)
+		cp	PAGE_TABLES
+		ret	z
 map_tables:
 		derefp	tables_fp	; HL -> the block
 		ld	(tables),hl
+		ld	a,PAGE_TABLES
+		ld	(page2),a
 		ret
+
+; map_window - segment A of the ring in page 2, if it is not there
+;   already.
+;
+; Input:	A = the segment, 0 to 3
+;		page2, win_fp
+; Output:	page2 = A
+; Modifies:	AF
+;		DE
+;		HL
+; Scratch:	none
+
+map_window:
+		ld	hl,page2
+		cp	(hl)
+		ret	z
+		ld	(hl),a
+		add	a,a		; win_fp + 4 * A
+		add	a,a
+		ld	e,a
+		ld	d,0
+		ld	hl,win_fp
+		add	hl,de
+		jp	deref		; maps it; BC is kept
 
 ; fill_bits - take B bits off the top of bitbuf, and as many in at the
 ;   bottom, from the data.
@@ -425,6 +640,7 @@ get_bits:
 ; Scratch:	none
 
 decode_c:
+		call	tables_in	; page 2 may hold the ring
 		ld	hl,(blocksize)
 		ld	a,h
 		or	l
@@ -474,7 +690,7 @@ decode_c.tree:
 		pop	hl
 		ret
 
-; decode_p - the next match's distance, less 1: 0 to 8191.
+; decode_p - the next match's distance, less 1: 0 to 65535.
 ;
 ;   The symbol, through pt_table and the next 8 bits, is how many bits
 ;   the distance has; its top bit is always 1, so it is not sent, and
@@ -489,6 +705,7 @@ decode_c.tree:
 ; Scratch:	none
 
 decode_p:
+		call	tables_in
 		ld	a,(bitbuf+1)	; the next 8 bits
 		ld	l,a
 		ld	h,0
@@ -500,15 +717,20 @@ decode_p:
 		ld	e,(hl)
 		inc	hl
 		ld	d,(hl)		; DE = the entry
-		ld	hl,P_SYMS-1
+		ld	a,(p_syms)
+		ld	l,a
+		ld	h,0
+		dec	hl
 		or	a
 		sbc	hl,de
 		jr	nc,decode_p.length
-		push	de		; P_SYMS and up: a tree
+		push	de		; p_syms and up: a tree
 		ld	b,8
 		call	fill_bits
 		pop	de
-		ld	hl,P_SYMS
+		ld	a,(p_syms)
+		ld	l,a
+		ld	h,0
 		ld	bc,8000h
 		call	tree_walk
 		ld	hl,pt_len
@@ -625,12 +847,15 @@ read_block:
 		ld	d,3		; three can be followed by 0s
 		call	read_pt_len
 		call	read_c_len
-		ld	b,P_SYMS	; the distance codes
-		ld	c,PBIT
+		ld	a,(p_syms)	; the distance codes
+		ld	b,a
+		ld	a,(p_bits)
+		ld	c,a
 		ld	d,0FFh		; none
 		jp	read_pt_len
 
-; read_pt_len - the code lengths for T_SYMS or P_SYMS symbols, and pt_table.
+; read_pt_len - the code lengths for T_SYMS or p_syms symbols, and
+;   pt_table.
 ;
 ;   C bits give how many lengths follow. None means a single symbol,
 ;   whose number follows: every entry is it, with a length of 0. Each
@@ -1303,6 +1528,22 @@ make_table.branch:
 		add	hl,de
 		ret
 
+; lh_methods		per method, -lh4- to -lh7-: p_syms, p_bits,
+;			win_mask (a word) and win_segs
+;
+lh_methods:	defb	14,4
+		defw	1FFFh
+		defb	1
+		defb	14,4
+		defw	1FFFh
+		defb	1
+		defb	16,5
+		defw	7FFFh
+		defb	2
+		defb	17,5
+		defw	0FFFFh
+		defb	4
+
 		dseg
 
 ; Variables for lh5.as:
@@ -1311,9 +1552,22 @@ make_table.branch:
 ;			the program file, so it starts at 0
 ; tables_fp		its far pointer
 ; tables		-> it, in page 2, once mapped
-; window		-> the window: the caller's buffer
+; win_have		the window's segments got so far; 0 in the
+;			program file
+; win_fp		their far pointers, 4 bytes each, up to 4
+; outbuf		-> the output buffer: the caller's
+; p_syms, p_bits, win_mask, win_segs
+;			the method's: kinds of distance, the bits that
+;			count them, the ring's size less 1, its segments
+; win_head		where the ring's next byte goes
+; wrapped		not 0 once the ring has wrapped
+; part_len		the part in the buffer, not yet in the ring
+; app_left, app_src, app_n	ring_append: what is left, where from,
+;			this piece
+; page2			what page 2 holds: PAGE_TABLES, a segment of the
+;			ring (0 to 3), or PAGE_NONE
 ; want, pos		lh5_read: how many bytes, how many so far
-; match_left, match_src	a match not finished: bytes left, where from
+; match_left, match_dist	a match not finished: bytes left, its distance
 ; lh5_left		the member's data not yet read, 4 bytes
 ; lh5_error		0, or what went wrong: LH5_BAD, or from reading
 ; in_count, in_ptr	in_buf: bytes not used yet, the next one
@@ -1343,11 +1597,24 @@ make_table.branch:
 tables_ready:	defb	0
 tables_fp:	defs	4
 tables:		defs	2
-window:		defs	2
+win_have:	defb	0
+win_fp:		defs	16
+outbuf:		defs	2
+p_syms:		defs	1
+p_bits:		defs	1
+win_mask:	defs	2
+win_segs:	defs	1
+win_head:	defs	2
+wrapped:	defs	1
+part_len:	defs	2
+app_left:	defs	2
+app_src:	defs	2
+app_n:		defs	2
+page2:		defs	1
 want:		defs	2
 pos:		defs	2
 match_left:	defs	2
-match_src:	defs	2
+match_dist:	defs	2
 lh5_left:	defs	4
 lh5_error:	defs	1
 in_count:	defs	2

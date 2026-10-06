@@ -22,6 +22,12 @@
 					;   before terminating!
 	extrn	maptot		; total mapper RAM
 					;   out: HL = number of 16K segments
+	extrn	mapfree		; free mapper RAM (added for Tsuzura)
+					;   out: HL = free 16K segments
+	extrn	segalloc	; a whole 16K segment (added for Tsuzura)
+					;   in:  HL -> 4-byte result buffer
+					;   out: CY set = no free segment
+					;        else slot, segment, offset 0
 	extrn	hblocks		; A WORD, not a routine: blocks handed
 					;   out by halloc and not yet given back
 					;   to hfree. The library never reads it;

@@ -111,6 +111,24 @@ long.lzh
     LONG.TXT, 1241658 bytes of very repetitive text packed into 84000:
     for SPEED.BAT, which times extracting it, not for TESTS.BAT
     sha256 8bc9c2c20bf12d0fa50a8ffbfae5e2fc7af88f63fc3be894fa2aff633db37877
+l0lh4.lzh
+    lhasa test/archives/lha_amiga_122/lh4.lzh: LHA for Amiga 1.22,
+    level 0, -lh4-: gpl-2
+    sha256 287586d14f052cb1e128cc87f6277a3da6e88431369e65c815666a67718e065c
+far6.lzh
+    made for Tsuzura with LHa for UNIX 1.14i-ac20260723 (built from
+    reference/lha-unix, commit 16619b0), lha -ao6, level 2, -lh6-:
+    FAR.DAT, 86000 bytes of made-up text whose 5000-byte passages
+    come back 20 to 60 KB later; matches reach 32750 bytes back
+    sha256 237ad0dd13d9a8b31f6256afb773381463471416c1da0f78029d58aec3efcc0e
+far7.lzh
+    the same file, lha -ao7, -lh7-: matches reach 65367 bytes back
+    sha256 b3398acd90a531c37a56925ab06e3d8a7d87184c3ea805b78a810731c08aa957
+long7.lzh
+    lhasa test/archives/lha_unix114i/lh7_long.lzh: LHa for UNIX
+    1.14i, level 1, -lh7-, long.txt, the same 1241658 bytes as
+    long.lzh's in 76620: for SPEED.BAT, not for TESTS.BAT
+    sha256 37ffaebe08c9d8dcf8e9add232187bcdaa1313b13f7c22efe810b8bf883eaae5
 
 The archives from lhasa are distributed under its licence:
 

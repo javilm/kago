@@ -176,7 +176,23 @@ echo --- unkago /O /D:lh5 ..\unkago\lh5zero.lzh>>..\results.txt
 ..\..\build\unkago /O /D:lh5 ..\unkago\lh5zero.lzh>>..\results.txt
 echo --- unkago /O /D:lh5 ..\unkago\lh5bad.lzh>>..\results.txt
 ..\..\build\unkago /O /D:lh5 ..\unkago\lh5bad.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\l0lh4.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\l0lh4.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\far6.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\far6.lzh>>..\results.txt
+echo --- unkago /O /D:lh5 ..\unkago\far7.lzh>>..\results.txt
+..\..\build\unkago /O /D:lh5 ..\unkago\far7.lzh>>..\results.txt
 cd ..\..
+
+rem MEMORY makes a 320 KB RAM disk, then asks for FAR7.LZH's 64 KB
+rem window. On a plain FS-A1GT (512 KB, about 336 KB free) that leaves
+rem too little, and UNKAGO must refuse; with more memory it extracts.
+rem The result goes to TESTS\MEMORY.TXT, read on the Mac, not compared,
+rem since it depends on the machine.
+ramdisk 320 /d>tests\memory.txt
+ramdisk>>tests\memory.txt
+build\unkago /D:tests\out\mem tests\unkago\far7.lzh>>tests\memory.txt
+ramdisk 0 /d
 
 echo === MAPTEST>>tests\results.txt
 echo --- maptest>>tests\results.txt

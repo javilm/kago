@@ -14,6 +14,8 @@
 ;	deref		make a far pointer addressable in page 2
 ;	p2restore	hand page 2 back to MSX-DOS
 ;	maptot		total mapper RAM, in 16K segments
+;	mapfree		free mapper RAM, in 16K segments (added for Tsuzura)
+;	segalloc	allocate a whole 16K segment (added for Tsuzura)
 ;	hblocks		(a word) blocks handed out and not yet given back
 ;
 ; THE RULE: page 2 belongs to MSX-DOS whenever MSX-DOS runs. Call p2restore
@@ -26,6 +28,8 @@
 		public	deref
 		public	p2restore
 		public	maptot
+		public	mapfree
+		public	segalloc
 		public	hblocks
 
 		include	farptr.inc	; far-pointer macros + NULLOFF
@@ -177,6 +181,29 @@ maptot.1:	ld	a,(ix+0)	; +0 = slot address, 0 = end of table
 		add	ix,de		; step into the next mapper
 		jr	maptot.1
 
+; mapfree - free mapper RAM, as a count of 16K segments
+;
+; Sums the "free segments" byte (+2) of every entry in the variable table,
+; as maptot sums the totals. Added for Tsuzura (note 012), for the memory
+; check of its requirement R7. Caller does HL*16 for KB.
+;
+; Input:	nothing (heapinit must have run first)
+; Output:	HL = number of free 16K segments
+; Modifies:	AF, BC, DE, HL, IX
+
+mapfree:		ld	hl,0		; running total = 0
+		ld	ix,(varptr)	; IX -> first mapper entry
+
+mapfree.1:	ld	a,(ix+0)	; +0 = slot address, 0 = end of table
+		or	a
+		ret	z		; end reached -> HL holds the total
+		ld	c,(ix+2)	; +2 = this mapper's free segments
+		ld	b,0
+		add	hl,bc
+		ld	de,8		; each entry is 8 bytes
+		add	ix,de
+		jr	mapfree.1
+
 ; allocseg (internal) - allocate one 16K segment from any mapper, primary
 ; first.
 ;
@@ -198,6 +225,30 @@ allocseg:	call	p2restore	; ALL_SEG is a DOS service: sane
 		ld	b,a		; B = slot address + strategy
 		xor	a		; A = 0 (allocate user segment)
 		call	ALL_SEG		; CY on failure, else A=segment, B=slot
+		ret
+
+; segalloc - allocate one whole 16K segment, as a far pointer to its
+; first byte: deref maps it, and offsets 0 to 03FFFh are all its own.
+; Added for Tsuzura (note 012): a window of 32 or 64 KB is made of whole
+; segments, which halloc's blocks, at most BIGSZ, cannot be.
+;
+; Input:	HL -> a 4-byte buffer for the far pointer
+; Output:	CY set   = no free segment in any mapper
+;		CY clear = the buffer holds slot, segment, offset 0
+; Modifies:	AF, BC, DE, HL
+
+segalloc:	push	hl
+		call	allocseg	; A = segment, B = slot; CY = none
+		pop	hl
+		ret	c
+		ld	(hl),b		; +0 slot
+		inc	hl
+		ld	(hl),a		; +1 segment
+		inc	hl
+		xor	a		; +2..3 offset 0; CY clear
+		ld	(hl),a
+		inc	hl
+		ld	(hl),a
 		ret
 
 ; deref - make a far pointer's byte addressable in page 2.

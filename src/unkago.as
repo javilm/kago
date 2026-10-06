@@ -1,14 +1,15 @@
-; unkago.as - UNKAGO, the decompressor. Phase 2: it lists LZH archives,
-; and extracts their stored members.
+; unkago.as - UNKAGO, the decompressor: it lists LZH archives, and
+; extracts their stored and -lh4- to -lh7- members.
 ;
 ; It checks for MSX-DOS2 and the command line. With /L it lists the
 ; members of an LZH archive: sizes, method, date and name, one line
 ; each, and the totals. Without it, it extracts the -lh0- (stored) and
-; -lh5- (lh5.as) members into
-; the current directory, or the one /D: names, checking first that they
-; fit and then each one's CRC-16. Names after the archive's, with * and
-; ?, choose the members, for listing and extracting alike. On the
-; screen, each member's line shows how far through it UNKAGO is.
+; -lh4- to -lh7- (lh5.as) members into the current directory, or the
+; one /D: names, checking first that they fit on the disk and their
+; windows in the mapper, and then each one's CRC-16. Names after the
+; archive's, with * and ?, choose the members, for listing and
+; extracting alike. On the screen, each member's line shows how far
+; through it UNKAGO is.
 
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
@@ -450,15 +451,17 @@ extract_member.created:
 		ld	hl,(lzh_packed)	; -lh0-: the data's size
 		ld	de,(lzh_packed+2)
 		ld	a,(member_kind)
-		cp	"5"
-		jr	nz,extract_member.sized
-		ld	hl,(lzh_original)	; -lh5-: what it unpacks to
+		cp	"0"
+		jr	z,extract_member.sized
+		ld	hl,(lzh_original)	; -lhN-: what it unpacks to
 		ld	de,(lzh_original+2)
 extract_member.sized:
 		ld	(remaining),hl
 		ld	(remaining+2),de
-		jr	nz,extract_member.copy	; Z still from the CP
-		ld	de,copy_buffer	; the window
+		jr	z,extract_member.copy	; -lh0-: Z still from the CP
+		ld	a,(member_kind)	; B = the method's digit
+		ld	b,a
+		ld	de,copy_buffer	; the output buffer
 		call	lh5_start	; A = 0, or .NORAM
 		or	a
 		jp	nz,extract_member.failed
@@ -481,8 +484,8 @@ extract_member.copy:
 extract_member.chunk:
 		ld	(chunk),hl
 		ld	a,(member_kind)
-		cp	"5"
-		jr	z,extract_member.decode
+		cp	"0"
+		jr	nz,extract_member.decode
 		ld	de,copy_buffer
 		call	lzh_read	; A = 0, TRUNCATED, or an error
 		jr	extract_member.read
@@ -516,8 +519,8 @@ extract_member.read:
 		jr	extract_member.copy
 extract_member.copied:
 		ld	a,(member_kind)
-		cp	"5"
-		jr	nz,extract_member.close	; -lh0-: all of it was read
+		cp	"0"
+		jr	z,extract_member.close	; -lh0-: all of it was read
 		call	lh5_finish	; the data not read: A = 0, or
 		or	a
 		jp	nz,extract_member.failed
@@ -574,11 +577,11 @@ extract_member.discard:
 		ret
 
 ; member_supported - whether the member just read is one UNKAGO
-;   extracts: -lh0- (stored) or -lh5-.
+;   extracts: -lh0- (stored), or -lh4- to -lh7-.
 ;
 ; Input:	lzh_method (lzh.as)
-; Output:	Z set = it is, and then
-;		A = member_kind = "0" or "5"
+; Output:	Z set = it is
+;		member_kind = the method's digit
 ; Modifies:	AF
 ;		B
 ;		DE
@@ -603,8 +606,14 @@ member_supported.next:
 		ld	(member_kind),a
 		cp	"0"
 		ret	z
-		cp	"5"
-		ret			; Z set: -lh5-
+		sub	"4"		; "4" to "7": 0 to 3
+		cp	4
+		jr	nc,member_supported.no
+		xor	a		; Z set: -lh4- to -lh7-
+		ret
+member_supported.no:
+		or	1		; Z clear
+		ret
 
 ; check_space - stop, saying why, unless the extraction fits.
 ;
@@ -619,10 +628,12 @@ member_supported.next:
 ;   safe side. A walk that fails (a damaged or cut-off archive, a read
 ;   error) ends here, through report_stop, with nothing written.
 ;
+;   The walk also finds the largest window among the members, which
+;   check_memory, last, weighs against the free mapper memory.
+;
 ; Input:	the archive open, at its start
 ;		dest_path
-; Output:	returns only if it fits
-;		cluster_shift: log2 of the cluster's size in bytes
+; Output:	returns only if it fits, on the disk and in the mapper
 ; Modifies:	everything
 ; Scratch:	none
 
@@ -658,6 +669,8 @@ check_space.bytes:
 		ld	hl,0
 		ld	(need_clusters+2),hl
 		ld	(members),hl
+		xor	a
+		ld	(need_segs),a	; no window yet
 check_space.next:
 		call	lzh_next_header
 		or	a
@@ -679,6 +692,18 @@ check_space.next:
 		ld	bc,(need_clusters+2)
 		adc	hl,bc
 		ld	(need_clusters+2),hl
+		ld	a,(member_kind)	; its window, in segments
+		sub	"4"		; "4" to "7": 0 to 3
+		jr	c,check_space.skip	; -lh0-: none
+		ld	e,a
+		ld	d,0
+		ld	hl,window_segs
+		add	hl,de
+		ld	a,(hl)
+		ld	hl,need_segs	; the largest so far
+		cp	(hl)
+		jr	c,check_space.skip
+		ld	(hl),a
 check_space.skip:
 		call	lzh_skip_data
 		or	a
@@ -700,7 +725,7 @@ check_space.end:
 		ld	de,(need_clusters)
 		or	a
 		sbc	hl,de
-		ret	nc		; it fits
+		jp	nc,check_memory	; it fits: now the mapper
 check_space.short:
 		print	msg_space_need
 		ld	hl,(need_clusters)
@@ -1379,6 +1404,51 @@ progress_prefix:
 		print	msg_extracting
 		printl	lzh_name,(lzh_name_length)
 		ret
+; check_memory - stop, saying why, unless the window and the tables fit
+;   in the free mapper memory, as R7 asks.
+;
+;   The largest window among the members to be extracted (check_space
+;   found it, in segments), and one segment more for the decoder's
+;   tables, against mapfree's free segments. A shortage gives both
+;   figures, in KB or MB, as for the disk; print_size is told that a
+;   "cluster" is a 16 KB segment.
+;
+; Input:	need_segs: the largest window, 0 for none
+; Output:	returns only if it fits
+; Modifies:	everything
+; Scratch:	none
+
+check_memory:
+		ld	a,(need_segs)
+		or	a
+		ret	z		; nothing to decode: no mapper
+		inc	a		; and the tables' block
+		ld	(need_segs),a
+		call	mapfree		; HL = free segments
+		ld	(free_segs),hl
+		ld	a,(need_segs)
+		ld	e,a
+		ld	d,0
+		or	a
+		sbc	hl,de
+		ret	nc		; it fits
+		ld	a,14		; print_size: segments of 16 KB
+		ld	(cluster_shift),a
+		print	msg_mem_need
+		ld	a,(need_segs)
+		ld	l,a
+		ld	h,0
+		ld	de,0
+		ld	a,1		; rounded up
+		call	print_size
+		print	msg_mem_free
+		ld	hl,(free_segs)
+		ld	de,0
+		xor	a		; rounded down
+		call	print_size
+		print	msg_mem_end
+		dos	_TERM0
+
 ; set_date_attributes - give the file just extracted its date and its
 ;   attributes.
 ;
@@ -1806,7 +1876,11 @@ print_totals.word:
 ; msg_kb, msg_mb, mb_digit	print_size's units; it writes the tenths
 ; msg_not_extracted	not_extracted's line, before the name
 ; msg_not_in		report_unmatched's line, before the name
-; msg_data_error		a member whose -lh5- data is not valid
+; msg_data_error		a member whose compressed data is not valid
+; msg_mem_need, msg_mem_free, msg_mem_end
+;			the mapper's shortage, around its two amounts
+; window_segs		the window's segments, -lh4- to -lh7-, as
+;			lh5.as allocates them
 ; msg_no_mapper		heapinit found no mapper support
 ; msg_cr, msg_blank, pct_text
 ;			the progress line: back to its start, five
@@ -1895,6 +1969,10 @@ msg_not_extracted:
 		defb	"Not extracted $"
 msg_not_in:	defb	"Not in the archive: $"
 msg_data_error:	defb	" data error",CHR_CR,CHR_LF,"$"
+msg_mem_need:	defb	"Extracting this archive needs $"
+msg_mem_free:	defb	" of mapper memory, but only $"
+msg_mem_end:	defb	" are free.",CHR_CR,CHR_LF,"$"
+window_segs:	defb	1,1,2,4
 msg_no_mapper:	defb	"UNKAGO needs MSX-DOS2's mapper support."
 		defb	CHR_CR,CHR_LF,"$"
 msg_cr:		defb	CHR_CR,"$"
@@ -1936,8 +2014,11 @@ pct_text:	defb	"   0%$"
 ; need_clusters		what the extraction takes, 4 bytes
 ; stop_code		not_extracted: what stopped the extraction
 ; walked		not_extracted: the members walked again
-; member_kind		"0" or "5": the member's method, as
-;			member_supported found it
+; member_kind		the member's method's digit, "0" or "4" to "7",
+;			as member_supported found it
+; need_segs		check_space: the largest window, in segments;
+;			check_memory: and the tables'
+; free_segs		mapfree's free segments
 ; progress		not 0 to show progress
 ; pct			the percentage on the screen
 ; pct_step		the bytes in one per cent, 4 bytes
@@ -1990,6 +2071,8 @@ size_value:	defs	4
 size_text:	defs	10
 listed:	defs	2
 member_kind:	defs	1
+need_segs:	defs	1
+free_segs:	defs	2
 progress:	defs	1
 pct:	defs	1
 pct_step:	defs	4
