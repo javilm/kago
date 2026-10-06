@@ -2,8 +2,8 @@
 
 **kago** and **unkago** are a pair of command-line tools for MSX-DOS2 that
 create and extract archives: `KAGO` packs files and whole directory trees into
-an LZH or PMA archive, and `UNKAGO` unpacks them again. They are written
-entirely in Z80 assembler.
+an LZH, PMA or ZIP archive, and `UNKAGO` unpacks them again. One pair of tools
+handles all three formats. They are written entirely in Z80 assembler.
 
 *Kago* is Japanese for "basket": something woven that you pack things into.
 
@@ -16,6 +16,10 @@ entirely in Z80 assembler.
 |---|---|---|
 | LZH (`.lzh`, `.lha`) | `-lh5-` | `-lh0-`, `-lh1-`, `-lh4-`, `-lh5-`, `-lh6-`, `-lh7-` |
 | PMA (`.pma`) | `-pm0-`, `-pm2-` | `-pm0-`, `-pm1-`, `-pm2-` |
+| ZIP (`.zip`) | stored, deflate | stored, deflate |
+
+`KAGO` is told which format to write with a command-line switch. `UNKAGO`
+recognises the format of an archive by itself.
 
 - **Whole directory trees**, packed and extracted, subdirectories included.
 - **Large-window archives.** `UNKAGO` reads `-lh6-` and `-lh7-` archives
@@ -45,9 +49,9 @@ directory. The include files the build needs are in `src/include/`.
 
 Each tool's tests are in `tests/<tool>/`. Run `tests.bat` from the `tests`
 directory; the results are collected in `tests/RESULTS.TXT`. Archives made by
-`lha` on a modern computer and by PMarc on the MSX serve as the reference.
+`lha` and `zip` on a modern computer, and by PMarc on the MSX, serve as the
+reference.
 
 ## Changes
 
 See [CHANGELOG.md](CHANGELOG.md).
-

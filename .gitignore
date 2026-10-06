@@ -18,6 +18,11 @@ dist/
 !build/kago.com
 !build/unkago.com
 
+# ...and test inputs, which may have any extension: a test that
+# compresses a ROM image must not lose its input to the rule above
+!tests/**/*.bin
+!tests/**/*.rom
+
 # Files that may have been brought over by mistake when
 # cloning the emulator's filesystem to the repo
 git/

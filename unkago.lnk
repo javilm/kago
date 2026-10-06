@@ -1,0 +1,4 @@
+; unkago.lnk - the modules of UNKAGO, in link order
+unkago.tro			; the entry point comes first
+common.tro			; shared with KAGO
+
