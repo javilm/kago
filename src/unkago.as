@@ -6,7 +6,8 @@
 ; each, and the totals. Without it, it extracts the -lh0- members into
 ; the current directory, or the one /D: names, checking first that they
 ; fit and then each one's CRC-16. Names after the archive's, with * and
-; ?, choose the members, for listing and extracting alike.
+; ?, choose the members, for listing and extracting alike. On the
+; screen, each member's line shows how far through it UNKAGO is.
 
 		include	common.inc	; common.as's routines, and print
 		include	lzh.inc		; lzh.as: reading the archive
@@ -320,6 +321,7 @@ extract_archive:
 		call	lzh_rewind
 		or	a
 		jp	nz,report_stop
+		call	progress_init	; on the screen, not with /Q
 		call	crc_init
 		ld	hl,0
 		ld	(members),hl
@@ -345,7 +347,10 @@ extract_archive.next:
 ;   through copy_buffer, COPY_SIZE bytes at a time, its CRC-16 computed
 ;   on the way; the file is closed, and only then are its date and
 ;   attributes set (closing a written file gives it the current date).
-;   A CRC that does not match deletes the file. A full disk or root
+;   On the screen the line shows the percentage as the data is copied
+;   (progress_start, progress_update), cleared before the last word
+;   (progress_end). A CRC that does not match deletes the file. A full
+;   disk or root
 ;   directory stops, where any other refusal to create only skips.
 ;
 ; Input:	lzh.as's variables: the member just read
@@ -431,6 +436,7 @@ extract_member.created:
 		ld	(out_handle),a
 		print	msg_extracting
 		printl	lzh_name,(lzh_name_length)
+		call	progress_start	; "   0%", on the screen
 		ld	hl,0
 		ld	(crc_value),hl
 		ld	hl,(lzh_packed)	; remaining = the data's size
@@ -480,6 +486,7 @@ extract_member.chunk:
 		ld	de,0
 		sbc	hl,de
 		ld	(remaining+2),hl
+		call	progress_update
 		jr	extract_member.copy
 extract_member.copied:
 		ld	a,(out_handle)
@@ -487,9 +494,11 @@ extract_member.copied:
 		dos	_CLOSE
 		or	a
 		jr	nz,extract_member.failed_closed
+		call	progress_end	; the number off the line
 		ld	hl,(crc_value)
 		ld	de,(lzh_crc)
-		sbc	hl,de		; carry clear from OR A
+		or	a
+		sbc	hl,de
 		jr	nz,extract_member.crc_error
 		call	set_date_attributes
 		print	msg_ok
@@ -1149,6 +1158,170 @@ report_unmatched.skip:
 		jr	nz,report_unmatched.skip
 		djnz	report_unmatched.next
 		ret
+; progress_init - whether extracting shows its progress.
+;
+;   Only on the screen, as R9 asks, and not with /Q. _IOCTL says whether
+;   standard output is a device (bit 7 of its status) or a file: with
+;   output redirected into a file, each member gets its final line only,
+;   so RESULTS.TXT does not change from one run to the next.
+;
+; Input:	the command line
+; Output:	progress: not 0 to show it
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+progress_init:
+		ld	c,"Q"
+		call	switch_given	; CY set: /Q
+		ld	a,0
+		jr	c,progress_init.set
+		ld	b,1		; standard output
+		xor	a		; get its status
+		dos	_IOCTL		; DE = the status
+		or	a
+		jr	nz,progress_init.set	; an error: A is not 0, no
+		ld	a,e
+		and	80h		; a device: the screen
+progress_init.set:
+		ld	(progress),a
+		ret
+
+; progress_start - the first percentage, after "Extracting NAME".
+;
+;   One per cent of the member's data is worked out here, once: every
+;   later update only adds. A member under 100 bytes has 0 bytes per per
+;   cent, and goes straight to 100 at its first update.
+;
+; Input:	lzh_packed (lzh.as), progress
+; Output:	"   0%" on the screen, when showing progress
+;		pct, pct_step, pct_next, copied
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+progress_start:
+		ld	a,(progress)
+		or	a
+		ret	z
+		ld	hl,(lzh_packed)
+		ld	de,(lzh_packed+2)
+		ld	c,100
+		call	divide_by_c	; DE:HL = bytes per per cent
+		ld	(pct_step),hl
+		ld	(pct_step+2),de
+		ld	(pct_next),hl	; reached at 1%
+		ld	(pct_next+2),de
+		ld	hl,0
+		ld	(copied),hl
+		ld	(copied+2),hl
+		xor	a
+		ld	(pct),a
+		jr	progress_number
+
+; progress_update - after each chunk: the percentage, redrawn only if it
+;   has changed, so at most 100 times a member.
+;
+;   copied grows by chunk; while it has reached pct_next, pct goes up by
+;   one and pct_next by pct_step. 100 is as far as it goes.
+;
+;   progress_number, its second entry, prints the number alone, as
+;   " NNN%".
+;
+; Input:	chunk, and progress_start's variables
+; Output:	the line, redrawn when the number changes
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+progress_update:
+		ld	a,(progress)
+		or	a
+		ret	z
+		ld	hl,(copied)
+		ld	de,(chunk)
+		add	hl,de
+		ld	(copied),hl
+		ld	hl,(copied+2)
+		ld	de,0
+		adc	hl,de
+		ld	(copied+2),hl
+		ld	a,(pct)
+		ld	b,a		; B = the number on the screen
+progress_update.more:
+		ld	a,(pct)
+		cp	100
+		jr	nc,progress_update.drawn	; as far as it goes
+		ld	hl,(copied)	; copied - pct_next
+		ld	de,(pct_next)
+		or	a
+		sbc	hl,de
+		ld	hl,(copied+2)
+		ld	de,(pct_next+2)
+		sbc	hl,de
+		jr	c,progress_update.drawn	; not there yet
+		ld	hl,pct
+		inc	(hl)
+		ld	hl,(pct_next)	; pct_next + pct_step
+		ld	de,(pct_step)
+		add	hl,de
+		ld	(pct_next),hl
+		ld	hl,(pct_next+2)
+		ld	de,(pct_step+2)
+		adc	hl,de
+		ld	(pct_next+2),hl
+		jr	progress_update.more
+progress_update.drawn:
+		ld	a,(pct)
+		cp	b
+		ret	z		; the same: nothing to redraw
+		call	progress_prefix
+progress_number:
+		ld	a,(pct)		; " NNN%"
+		ld	l,a
+		ld	h,0
+		ld	de,0
+		ld	b,3
+		ld	ix,pct_text+4
+		call	format_number
+		print	pct_text
+		ret
+
+; progress_end - clear the percentage before the member's last word.
+;
+;   The line is drawn again without the number, blanked, and drawn once
+;   more, so that " OK" or " CRC error" follows the name.
+;
+;   progress_prefix, its second half, is the line's start alone: back
+;   to the left edge, "Extracting " and the name.
+;
+; Input:	progress
+; Output:	the cursor just after "Extracting NAME"
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+progress_end:
+		ld	a,(progress)
+		or	a
+		ret	z
+		call	progress_prefix
+		print	msg_blank	; over the number
+progress_prefix:
+		print	msg_cr		; back to the line's start
+		print	msg_extracting
+		printl	lzh_name,(lzh_name_length)
+		ret
 ; set_date_attributes - give the file just extracted its date and its
 ;   attributes.
 ;
@@ -1576,6 +1749,10 @@ print_totals.word:
 ; msg_kb, msg_mb, mb_digit	print_size's units; it writes the tenths
 ; msg_not_extracted	not_extracted's line, before the name
 ; msg_not_in		report_unmatched's line, before the name
+; msg_cr, msg_blank, pct_text
+;			the progress line: back to its start, five
+;			spaces over the number, the number; progress_number
+;			writes its digits
 ;
 switch_letters:	defb	"DLOQV?",0
 msg_need_dos2:	defb	"ERROR: UNKAGO needs MSX-DOS2 or Nextor."
@@ -1658,6 +1835,9 @@ mb_digit:	defb	"0 MB$"
 msg_not_extracted:
 		defb	"Not extracted $"
 msg_not_in:	defb	"Not in the archive: $"
+msg_cr:		defb	CHR_CR,"$"
+msg_blank:	defb	"     $"
+pct_text:	defb	"   0%$"
 
 		dseg
 
@@ -1694,6 +1874,11 @@ msg_not_in:	defb	"Not in the archive: $"
 ; need_clusters		what the extraction takes, 4 bytes
 ; stop_code		not_extracted: what stopped the extraction
 ; walked		not_extracted: the members walked again
+; progress		not 0 to show progress
+; pct			the percentage on the screen
+; pct_step		the bytes in one per cent, 4 bytes
+; pct_next		where the next per cent is reached, 4 bytes
+; copied		the member's bytes copied so far, 4 bytes
 ; name_list		the member names given: a flag, the name, a 0
 ; name_count		how many
 ; match_end, match_star, match_from
@@ -1740,6 +1925,11 @@ size_round:	defs	1
 size_value:	defs	4
 size_text:	defs	10
 listed:	defs	2
+progress:	defs	1
+pct:	defs	1
+pct_step:	defs	4
+pct_next:	defs	4
+copied:	defs	4
 name_list:	defs	192
 name_count:	defs	1
 match_end:	defs	2
