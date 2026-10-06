@@ -302,13 +302,14 @@ rem KIN, which gives its files and directories fixed dates and
 rem attributes; KAGO archives the tree into K1.LZH, which UNKAGO lists,
 rem then extracts into KOUT for the Mac to compare. Then the refusals, a
 rem format the switch chooses, a directory named, files named twice, /A
-rem adding to K5.LZH, and an archive among the files it is made of,
-rem made and then added to. The same tree goes into Z1.ZIP, which
-rem UNKAGO lists and extracts into ZOUT, and KIN\SUB into Z2.DAT, ZIP by
-rem the switch. KAGO never replaces an archive, so its archives are
-rem deleted first. RO.TXT is left read-only, so it is made writable
-rem first, for /O to replace it. What KOUT\KIN and ZOUT\KIN hold goes
-rem into TESTS\DATES.TXT.
+rem adding to K5.LZH and Z5.ZIP, and to copies of ZDESC.ZIP (a data
+rem descriptor) and ZCOMM.ZIP (comments, in TESTS\OUT\ZIP), and an
+rem archive among the files it is made of, made and then added to. The
+rem same tree goes into Z1.ZIP, which UNKAGO lists and extracts into
+rem ZOUT, and KIN\SUB into Z2.DAT, ZIP by the switch. KAGO never replaces
+rem an archive, so its archives are deleted first. RO.TXT is left
+rem read-only, so it is made writable first, for /O to replace it. What
+rem KOUT\KIN and ZOUT\KIN hold goes into TESTS\DATES.TXT.
 echo === KAGO ARCHIVING>>tests\results.txt
 attrib -r tests\out\kin\ro.txt
 attrib -r tests\out\kout\kin\ro.txt
@@ -321,6 +322,8 @@ del k4.lzh
 del k5.lzh
 del k6.lzh
 del k5.$$$
+del z5.zip
+del zd.zip
 del z1.zip
 del z2.dat
 echo --- unkago /O /D:kin ..\kago\kin.lzh>>..\results.txt
@@ -386,8 +389,27 @@ echo --- kago /A k6.lzh kin\a.txt>>..\results.txt
 ..\..\build\kago /A k6.lzh kin\a.txt>>..\results.txt
 echo --- kago /A /F:LZH z1.zip kin\a.txt>>..\results.txt
 ..\..\build\kago /A /F:LZH z1.zip kin\a.txt>>..\results.txt
-echo --- kago /A z1.zip kin\a.txt>>..\results.txt
-..\..\build\kago /A z1.zip kin\a.txt>>..\results.txt
+echo --- kago /A /F:ZIP k1.lzh kin\a.txt>>..\results.txt
+..\..\build\kago /A /F:ZIP k1.lzh kin\a.txt>>..\results.txt
+echo --- kago z5.zip kin\a.txt kin\sub>>..\results.txt
+..\..\build\kago z5.zip kin\a.txt kin\sub>>..\results.txt
+echo --- kago /A z5.zip kin\*.txt>>..\results.txt
+..\..\build\kago /A z5.zip kin\*.txt>>..\results.txt
+echo --- unkago /L z5.zip>>..\results.txt
+..\..\build\unkago /L z5.zip>>..\results.txt
+copy ..\unkago\zdesc.zip zd.zip
+echo --- kago /A zd.zip kin\a.txt>>..\results.txt
+..\..\build\kago /A zd.zip kin\a.txt>>..\results.txt
+echo --- unkago /L zd.zip>>..\results.txt
+..\..\build\unkago /L zd.zip>>..\results.txt
+cd zip
+del zc.zip
+copy ..\..\unkago\zcomm.zip zc.zip
+echo --- kago /A zc.zip ztree\a.txt>>..\..\results.txt
+..\..\..\build\kago /A zc.zip ztree\a.txt>>..\..\results.txt
+echo --- unkago /L zc.zip>>..\..\results.txt
+..\..\..\build\unkago /L zc.zip>>..\..\results.txt
+cd ..
 echo --- kago kout\kin\self.lzh kout\kin\*.*>>..\results.txt
 ..\..\build\kago kout\kin\self.lzh kout\kin\*.*>>..\results.txt
 echo --- unkago /L kout\kin\self.lzh>>..\results.txt

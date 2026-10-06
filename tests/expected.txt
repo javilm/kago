@@ -762,8 +762,48 @@ Nothing to add: k5.lzh was not changed.
 Adding KIN\A.TXT OK
 --- kago /A /F:LZH z1.zip kin\a.txt
 z1.zip: not an LZH archive KAGO can read.
---- kago /A z1.zip kin\a.txt
-Adding to ZIP archives is not supported yet.
+--- kago /A /F:ZIP k1.lzh kin\a.txt
+k1.lzh: not a ZIP archive KAGO can read.
+--- kago z5.zip kin\a.txt kin\sub
+Adding KIN\A.TXT OK
+Adding KIN\SUB\ OK
+Adding KIN\SUB\IN.TXT OK
+Adding KIN\SUB\DEEP\ OK
+--- kago /A z5.zip kin\*.txt
+Replacing KIN\A.TXT OK
+Adding KIN\RO.TXT OK
+Adding KIN\HID.TXT OK
+Adding KIN\A$B.TXT OK
+--- unkago /L z5.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+         0          0 stored 2026-10-07 10:00 KIN\SUB\
+        13         13 stored 2026-10-07 10:00 KIN\SUB\IN.TXT
+         0          0 stored 2026-10-07 10:00 KIN\SUB\DEEP\
+        18         18 stored 2001-02-03 04:05 KIN\A.TXT
+        12         12 stored 2100-03-01 00:00 KIN\RO.TXT
+         9          9 stored 2106-02-07 06:28 KIN\HID.TXT
+        23         23 stored 2099-12-31 23:59 KIN\A$B.TXT
+---------- ---------- ------                  ------------
+        75         75        7 files
+--- kago /A zd.zip kin\a.txt
+Adding KIN\A.TXT OK
+--- unkago /L zd.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        22         22 stored 2026-10-06 18:00 desc.txt
+        18         18 stored 2001-02-03 04:05 KIN\A.TXT
+---------- ---------- ------                  ------------
+        40         40        2 files
+--- kago /A zc.zip ztree\a.txt
+Replacing ZTREE\A.TXT OK
+--- unkago /L zc.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+       268      19890 deflat 2026-10-06 18:00 gpl.txt
+         3          3 stored 2026-10-06 18:00 ZTREE\A.TXT
+---------- ---------- ------                  ------------
+       271      19893        2 files
 --- kago kout\kin\self.lzh kout\kin\*.*
 Adding KOUT\KIN\A.TXT OK
 Adding KOUT\KIN\BIG.DAT OK

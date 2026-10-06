@@ -31,6 +31,8 @@ ZIP_INCLUDED	equ	1		; zip.inc: not our names as extrn
 		public	zip_local
 		public	zip_flags
 		public	zip_data
+		public	cd_next
+		public	zip_comment
 
 		include	zip.inc		; ZIP_SPLIT
 		include	lzh.inc		; the member's variables, lzh_read,
@@ -154,6 +156,7 @@ zip_open.back:
 		inc	bc
 		jr	zip_open.look
 zip_open.found:
+		ld	(zip_comment),bc	; what follows it: its comment
 		push	hl
 		pop	ix
 		ld	a,(ix+4)	; this disk, and the directory's: 0
@@ -582,7 +585,10 @@ text_deflate:	defb	"deflate"
 ; zip_total		the members in the directory
 ; zip_left		those not read yet
 ; cd_offset		where the directory starts, 4 bytes
-; cd_next		where the next header is, 4 bytes
+; cd_next		where the next header is, 4 bytes; public for
+;			KAGO's /A, which copies each header whole
+; zip_comment		zip_open: the archive's comment's length, 0 for
+;			none; public for KAGO's /A, which keeps it
 ; search_buf		zip_open: the buffer
 ; search_length		zip_open: the bytes searched
 ; number_text		method_text: a method's number, 5 wide
@@ -597,6 +603,7 @@ zip_total:	defs	2
 zip_left:	defs	2
 cd_offset:	defs	4
 cd_next:	defs	4
+zip_comment:	defs	2
 search_buf:	defs	2
 search_length:	defs	2
 number_text:	defs	5

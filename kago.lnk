@@ -4,6 +4,7 @@ lzhw.tro			; writing LZH headers
 zipw.tro			; writing ZIP headers
 seglist.tro			; lists in the mapper
 lzh.tro				; reading LZH archives, for /A
+zip.tro				; reading ZIP archives, for /A
 crc.tro				; the CRC-16, shared with UNKAGO
 progress.tro			; the progress line, shared with UNKAGO
 common.tro			; shared with UNKAGO and MAPTEST

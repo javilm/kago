@@ -19,5 +19,7 @@ ZIP_SPLIT	equ	6		; ZIP64, or a split archive: not
 		extrn	zip_local	; where its local header is
 		extrn	zip_flags	; its flags: bit 0, encrypted
 		extrn	zip_data	; to its data, past its local header
+		extrn	cd_next		; where the next central header is
+		extrn	zip_comment	; the archive's comment's length
 		endif
 

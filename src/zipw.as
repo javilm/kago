@@ -24,6 +24,7 @@
 
 		public	zipw_local
 		public	zipw_keep
+		public	zipw_add
 		public	zipw_copy
 		public	zipw_end
 		public	zipw_crc
@@ -71,7 +72,11 @@ zipw_local:
 ;   in the low byte), where the local header is, then the name: made in
 ;   zipw_buffer, then added to central_list.
 ;
+;   zipw_add, its second half, adds a record made elsewhere: /A's copy
+;   of an old member's (kago.as).
+;
 ; Input:	lzhw.as's variables, zipw_crc, zipw_at
+; Input:	zipw_add: HL -> the record, in low memory; BC = its length
 ; Output:	CY set = no mapper memory left for it
 ;		zipw_count, zipw_size: one more record
 ; Modifies:	AF
@@ -116,11 +121,12 @@ zipw_keep.zero:
 		ld	de,zipw_buffer
 		or	a
 		sbc	hl,de
-		ld	(record_length),hl
 		ld	b,h
 		ld	c,l
-		ld	de,central_list
 		ld	hl,zipw_buffer
+zipw_add:
+		ld	(record_length),bc
+		ld	de,central_list
 		call	seglist_add	; CY: no room
 		ret	c
 		ld	hl,(zipw_count)

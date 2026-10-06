@@ -1,6 +1,6 @@
 ; kago.as - KAGO, the compressor. It writes LZH and ZIP archives, every
 ; member stored, of the files and directory trees named on the command
-; line, and with /A adds to an LZH archive that is there.
+; line, and with /A adds to an LZH or ZIP archive that is there.
 ;
 ; It checks for MSX-DOS2 and the command line, and chooses the format:
 ; /F: names it, or the archive's extension does. LZH and ZIP are
@@ -31,6 +31,7 @@
 		include	progress.inc	; progress.as: the progress line
 		include	seglist.inc	; seglist.as: lists in the mapper
 		include	lzh.inc		; lzh.as: reading the old archive
+		include	zip.inc		; zip.as: reading an old ZIP one
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .NOFIL...
@@ -165,8 +166,33 @@ main.copy:
 		call	archive_write
 		jr	main.copy
 main.end_record:
-		call	zipw_end	; then the end record
+		call	zipw_end	; then the end record: with /A,
+		ld	bc,(zip_comment)	;   the old comment's length
+		push	hl
+		ld	hl,20
+		add	hl,de
+		ld	(hl),c
+		inc	hl
+		ld	(hl),b
+		pop	hl
 		call	archive_write
+		ld	hl,(zip_comment)	; and the comment, from its end
+		ld	a,h
+		or	l
+		jr	z,main.close
+		ld	(old_len),hl
+		ld	hl,0
+		ld	(old_len+2),hl
+		ld	hl,(lzh_size)
+		ld	de,(zip_comment)
+		or	a
+		sbc	hl,de
+		ld	(old_at),hl
+		ld	hl,(lzh_size+2)
+		ld	de,0
+		sbc	hl,de
+		ld	(old_at+2),hl
+		call	copy_range
 main.close:
 		ld	a,(archive_handle)
 		ld	b,a
@@ -1124,10 +1150,11 @@ add_words.next:
 ; open_old - with /A, the archive there is to add to.
 ;
 ;   Without /A, or with no archive by that name, the archive is made
-;   new, as before (write_name = archive_name). With one there: ZIP is
-;   not added to yet; an LZH archive is opened through lzh.as, and its
-;   first header is read, or none at all, so that one that is not LZH,
-;   or is damaged, is refused before anything is written. Its drive,
+;   new, as before (write_name = archive_name). With one there, it is
+;   opened through lzh.as; an LZH archive's first header is read, or
+;   none at all, and a ZIP archive's central directory found (zip_open),
+;   so that one that is not of the format chosen, or is damaged, is
+;   refused before anything is written (not_readable). Its drive,
 ;   first cluster and name are kept, as create_archive keeps the new
 ;   archive's, so that a word that names it passes it over. The new
 ;   archive is written as a temporary file beside it (make_temp).
@@ -1156,12 +1183,6 @@ open_old:
 		dos	_FFIRST
 		or	a
 		ret	nz		; no: it is made new
-		ld	a,(out_format)
-		or	a
-		jr	z,open_old.lzh
-		print	msg_no_zip_add	; note 024
-		dos	_TERM0
-open_old.lzh:
 		ld	a,(fib+FIB_DRIVE)	; its drive, cluster and name
 		ld	(old_drive),a
 		ld	hl,(fib+FIB_CLUSTER)
@@ -1174,17 +1195,25 @@ open_old.lzh:
 		call	lzh_open	; A = 0, or an MSX-DOS error
 		or	a
 		jr	nz,open_old.error
+		ld	a,(out_format)
+		or	a
+		jr	nz,open_old.zip
 		call	lzh_next_header	; a member, or the end
 		cp	LZH_END
 		jr	z,open_old.ok
 		or	a		; LZH_MEMBER
 		jr	z,open_old.ok
+open_old.checked:
 		cp	80h
 		jr	nc,open_old.error	; an MSX-DOS error
-		ld	de,archive_name	; not LZH, or damaged
-		call	print_zero
-		print	msg_not_lzh
+		call	not_readable	; not that format, or damaged
 		dos	_TERM0
+open_old.zip:
+		ld	de,copy_buffer	; zip_open's buffer, 8 KB
+		call	zip_open	; A = 0: its central directory found
+		or	a
+		jr	z,open_old.ok
+		jr	open_old.checked
 open_old.error:
 		ld	b,a
 		dos	_TERM
@@ -1268,7 +1297,7 @@ make_temp.ext:
 		ret
 
 ; copy_old - the old archive's members, all but those to be replaced,
-;   into the new one, byte for byte.
+;   into the new one, byte for byte. A ZIP archive's: copy_old_zip.
 ;
 ;   For each member: where its header starts, then the header (lzh.as),
 ;   then where its data starts: the header's length and the data's are
@@ -1286,6 +1315,9 @@ make_temp.ext:
 ; Scratch:	none
 
 copy_old:
+		ld	a,(out_format)
+		or	a
+		jp	nz,copy_old_zip
 		call	lzh_rewind
 		or	a
 		jp	nz,fail
@@ -1406,11 +1438,196 @@ copy_range.sized:
 old_bad:
 		cp	80h
 		jp	nc,fail		; an MSX-DOS error
-		ld	de,archive_name
-		call	print_zero
-		print	msg_not_lzh
+		call	not_readable
 		xor	a		; no MSX-DOS error
 		jp	fail
+
+; copy_old_zip - copy_old for ZIP: the old members, all but those to be
+;   replaced, into the new archive, as they were.
+;
+;   zip.as walks the old central directory (zip_next), its records
+;   one after the other from cd_next. For each one kept:
+;   - its local header, data and data descriptor, if it has one, are
+;     copied byte for byte (copy_range), from zip_local: the local
+;     header's length comes from zip_data, which stops at the data;
+;   - its central record is read again, whole, as it was (its extra
+;     field and comment too), from where zip_next found it; only where
+;     the local header now is changes, at 42; then it is kept for the end
+;     (zipw_add).
+;   A record over COPY_SIZE bytes, which no tool writes, is taken for
+;   damage.
+;
+; Input:	the old archive, open (lzh.as, zip.as); path_list
+; Output:	the members kept, written; their central records kept
+; Modifies:	everything
+; Scratch:	none
+
+copy_old_zip:
+		call	zip_rewind
+copy_old_zip.next:
+		ld	hl,(cd_next)	; where this record is
+		ld	(cd_at),hl
+		ld	hl,(cd_next+2)
+		ld	(cd_at+2),hl
+		call	zip_next
+		cp	LZH_END
+		ret	z		; all of them
+		or	a
+		jp	nz,old_bad
+		ld	hl,(cd_next)	; its length: to where the next is
+		ld	de,(cd_at)
+		or	a
+		sbc	hl,de
+		ld	(cd_len),hl
+		ld	hl,(cd_next+2)
+		ld	de,(cd_at+2)
+		sbc	hl,de
+		ld	a,h
+		or	l
+		ld	a,LZH_DAMAGED
+		jp	nz,old_bad	; 64 KB or more
+		ld	hl,(cd_len)
+		ld	de,COPY_SIZE+1
+		or	a
+		sbc	hl,de
+		ld	a,LZH_DAMAGED
+		jp	nc,old_bad	; over COPY_SIZE
+		call	old_path	; CY: too long for any path KAGO makes
+		jr	c,copy_old_zip.keep
+		call	path_mark_old	; CY: it is to be replaced
+		jr	c,copy_old_zip.next	; nothing to skip
+copy_old_zip.keep:
+		call	zip_data	; A = 0: at its data
+		or	a
+		jp	nz,old_bad
+		ld	a,1		; where the data starts
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	lzh_seek
+		or	a
+		jp	nz,fail
+		ld	bc,(zip_local)	; less where the local header is
+		or	a
+		sbc	hl,bc
+		ex	de,hl
+		ld	bc,(zip_local+2)
+		sbc	hl,bc
+		ex	de,hl
+		ld	bc,(lzh_packed)	; and the data
+		add	hl,bc
+		ex	de,hl
+		ld	bc,(lzh_packed+2)
+		adc	hl,bc
+		ex	de,hl
+		ld	(old_len),hl
+		ld	(old_len+2),de
+		ld	a,(zip_flags)	; bit 3: a data descriptor after it
+		bit	3,a
+		call	nz,descriptor
+		ld	hl,(zip_local)	; from the local header
+		ld	(old_at),hl
+		ld	hl,(zip_local+2)
+		ld	(old_at+2),hl
+		ld	a,1		; where it goes in the new archive
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	archive_seek
+		ld	(zipw_at),hl
+		ld	(zipw_at+2),de
+		call	copy_range
+		xor	a		; its central record, whole, into
+		ld	hl,(cd_at)	;   copy_buffer
+		ld	de,(cd_at+2)
+		call	lzh_seek
+		or	a
+		jp	nz,fail
+		ld	de,copy_buffer
+		ld	hl,(cd_len)
+		call	lzh_read
+		or	a
+		jp	nz,old_bad
+		ld	hl,(zipw_at)	; where its local header is now
+		ld	(copy_buffer+42),hl
+		ld	hl,(zipw_at+2)
+		ld	(copy_buffer+44),hl
+		ld	hl,copy_buffer
+		ld	bc,(cd_len)
+		call	zipw_add	; CY: no room
+		jp	c,no_memory
+		jp	copy_old_zip.next	; too far for jr
+
+; descriptor - a data descriptor's length, added to old_len.
+;
+;   It follows the data: the CRC-32 and the two sizes, 12 bytes, or 16
+;   with "PK" 7 8 in front, which is how the two are told apart.
+;
+; Input:	the old archive at the member's data; lzh_packed
+; Output:	old_len: 12 or 16 more
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+descriptor:
+		ld	hl,(lzh_packed)	; past the data
+		ld	de,(lzh_packed+2)
+		ld	a,1
+		call	lzh_seek
+		or	a
+		jp	nz,fail
+		ld	de,sig_buf
+		ld	hl,4
+		call	lzh_read
+		or	a
+		jp	nz,old_bad
+		ld	hl,sig_buf
+		ld	de,descriptor_sig
+		ld	b,4
+		ld	c,12		; without "PK" 7 8: 12 bytes
+descriptor.byte:
+		ld	a,(de)
+		cp	(hl)
+		jr	nz,descriptor.add
+		inc	hl
+		inc	de
+		djnz	descriptor.byte
+		ld	c,16		; with it: 16
+descriptor.add:
+		ld	hl,(old_len)
+		ld	b,0
+		add	hl,bc
+		ld	(old_len),hl
+		ret	nc
+		ld	hl,(old_len+2)
+		inc	hl
+		ld	(old_len+2),hl
+		ret
+
+; not_readable - "NAME: not an LZH archive KAGO can read.", or a ZIP
+;   archive, by out_format.
+;
+; Input:	archive_name, out_format
+; Output:	the line
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+not_readable:
+		ld	de,archive_name
+		call	print_zero
+		ld	de,msg_not_lzh
+		ld	a,(out_format)
+		or	a
+		jr	z,not_readable.say
+		ld	de,msg_not_zip
+not_readable.say:
+		dos	_STROUT
+		ret
 
 ; old_path - an old member's path, as KAGO writes paths, in lzhw_path.
 ;
@@ -1812,8 +2029,9 @@ fail_closed:
 ; msg_exists		after the archive's name, when it exists
 ; msg_nothing, msg_not_written, msg_not_changed
 ;			around the archive's name, when nothing was added
-; msg_no_zip_add, msg_not_lzh
+; msg_not_lzh, msg_not_zip
 ;			/A's refusals
+; descriptor_sig	a data descriptor's signature
 ; msg_left		where the new archive is, when it could not take
 ;			the old one's place
 ; temp_ext		the temporary file's extension, and a 0
@@ -1880,11 +2098,11 @@ msg_not_written:
 		defb	" was not written.",CHR_CR,CHR_LF,"$"
 msg_not_changed:
 		defb	" was not changed.",CHR_CR,CHR_LF,"$"
-msg_no_zip_add:
-		defb	"Adding to ZIP archives is not supported yet."
-		defb	CHR_CR,CHR_LF,"$"
 msg_not_lzh:	defb	": not an LZH archive KAGO can read."
 		defb	CHR_CR,CHR_LF,"$"
+msg_not_zip:	defb	": not a ZIP archive KAGO can read."
+		defb	CHR_CR,CHR_LF,"$"
+descriptor_sig:	defb	"PK",7,8
 msg_left:	defb	"The new archive is left as $"
 temp_ext:	defb	".$$$",0
 msg_adding:	defb	"Adding $"
@@ -1915,7 +2133,12 @@ end_mark:	defb	0
 ;			as MSX-DOS2 finds it: open_old
 ; temp_name		the temporary file's name, and a 0: make_temp
 ; old_at, old_len	copy_old: where an old member starts, and its
-;			header's and data's length, 4 bytes each
+;			header's and data's length, 4 bytes each;
+;			copy_old_zip: its local header's, data's and
+;			descriptor's
+; cd_at, cd_len		copy_old_zip: where an old central record is, 4
+;			bytes, and its length
+; sig_buf		descriptor: the 4 bytes after the data
 ; line_word		"Adding " or "Replacing ": path_check
 ; out_format		FORMAT_LZH or FORMAT_ZIP: archive_format
 ; archive_handle	the archive, open to write
@@ -1960,6 +2183,9 @@ old_entry:	defs	13
 temp_name:	defs	136
 old_at:	defs	4
 old_len:	defs	4
+cd_at:	defs	4
+cd_len:	defs	2
+sig_buf:	defs	4
 line_word:	defs	2
 word_at:	defs	2
 spec_text:	defs	128
