@@ -16,9 +16,11 @@
 ; while a segment is mapped in page 2: each record is made in
 ; zipw_buffer first, then added.
 ;
-; Every member is stored (method 0). The system it was made on is
-; MS-DOS, so the external attributes' low byte is MS-DOS's attributes.
-; A directory's name ends in "/" and needs version 2.0, a file 1.0.
+; A member packed smaller than its size is deflate (method 8, lh5w.as),
+; and needs version 2.0; one whose packed size is its size is stored
+; (method 0): a directory, whose name ends in "/", needs version 2.0, a
+; file 1.0. The system it was made on is MS-DOS, so the external
+; attributes' low byte is MS-DOS's attributes.
 ; Names keep MSX-DOS's case; each "\" becomes "/", but never the second
 ; byte of a two-byte character (kanji_lead, in common.as).
 
@@ -255,20 +257,39 @@ zipw_end.disks:
 
 ; zipw_fields - the 26 bytes a local header and a central record share.
 ;
-;   The version needed (2.0 for a directory, whose path is all
-;   directories; 1.0 for a file), no flags, method 0, MS-DOS's time and
-;   date, the CRC-32, the size twice, the name's length, no extra field.
+;   The version needed and the method: deflate, 2.0 and 8, when the
+;   packed size is under the size; stored, 2.0 for a directory, whose
+;   path is all directories, 1.0 for a file, and 0. Then no flags,
+;   MS-DOS's time and date, the CRC-32, the packed size and the size,
+;   the name's length, no extra field.
 ;
 ; Input:	DE -> where they go
 ;		lzhw.as's variables, zipw_crc
 ; Output:	DE -> just after them
 ; Modifies:	AF
-;		B
+;		BC
 ;		DE
 ;		HL
 ; Scratch:	none
 
 zipw_fields:
+		push	de
+		ld	hl,lzhw_packed	; packed the same as the size?
+		ld	de,lzhw_size
+		ld	b,4
+zipw_fields.compare:
+		ld	a,(de)
+		cp	(hl)
+		jr	nz,zipw_fields.compared
+		inc	hl
+		inc	de
+		djnz	zipw_fields.compare
+zipw_fields.compared:
+		pop	de
+		ld	c,8		; no: deflate, 2.0
+		ld	a,20
+		jr	nz,zipw_fields.version
+		ld	c,b		; yes: stored, B = 0
 		ld	a,(lzhw_dir)	; a directory?
 		ld	hl,lzhw_length
 		cp	(hl)
@@ -281,18 +302,23 @@ zipw_fields.version:
 		xor	a
 		ld	(de),a
 		inc	de
-		ld	b,4		; no flags, method 0
-zipw_fields.zero:
+		ld	(de),a		; no flags
+		inc	de
 		ld	(de),a
 		inc	de
-		djnz	zipw_fields.zero
+		ld	a,c		; the method
+		ld	(de),a
+		inc	de
+		xor	a
+		ld	(de),a
+		inc	de
 		ld	hl,lzhw_date	; the time, then the date
 		ld	bc,4
 		ldir
 		ld	hl,zipw_crc
 		ld	bc,4
 		ldir
-		ld	hl,lzhw_size	; packed: stored, the same
+		ld	hl,lzhw_packed	; packed
 		ld	bc,4
 		ldir
 		ld	hl,lzhw_size	; the size

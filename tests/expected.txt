@@ -649,7 +649,7 @@ Adding KIN\SUB\DEEP\ OK
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
         18         18 stored 2001-02-03 04:05 KIN\A.TXT
-     70000      70000 stored 1980-01-01 00:00 KIN\BIG.DAT
+      3786      70000 deflat 1980-01-01 00:00 KIN\BIG.DAT
          0          0 stored 2024-02-29 12:34 KIN\EMPTY.DAT
         12         12 stored 2100-03-01 00:00 KIN\RO.TXT
          9          9 stored 2106-02-07 06:28 KIN\HID.TXT
@@ -658,7 +658,7 @@ Adding KIN\SUB\DEEP\ OK
         13         13 stored 2026-10-07 10:00 KIN\SUB\IN.TXT
          0          0 stored 2026-10-07 10:00 KIN\SUB\DEEP\
 ---------- ---------- ------                  ------------
-     70075      70075        9 files
+      3861      70075        9 files
 --- unkago /O /D:zout z1.zip
 Extracting KIN\A.TXT OK
 Extracting KIN\BIG.DAT OK
@@ -912,11 +912,13 @@ Extracting ONE.DAT OK
 Extracting HALF.DAT OK
 Extracting ALL.DAT OK
 Extracting NOISE.DAT OK
+Extracting FIXED.DAT OK
 --- kago k8.lzh edge\*.*
 Adding EDGE\ONE.DAT OK
 Adding EDGE\HALF.DAT OK
 Adding EDGE\ALL.DAT OK
 Adding EDGE\NOISE.DAT OK
+Adding EDGE\FIXED.DAT OK
 --- unkago /L k8.lzh
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
@@ -924,13 +926,37 @@ Adding EDGE\NOISE.DAT OK
        185       8192 -lh5-  2026-10-08 12:00 EDGE\HALF.DAT
        364      10240 -lh5-  2026-10-08 12:00 EDGE\ALL.DAT
       4096       4096 -lh0-  2026-10-08 12:00 EDGE\NOISE.DAT
+        33         54 -lh5-  2026-10-08 12:00 EDGE\FIXED.DAT
 ---------- ---------- ------                  ------------
-      4659      25528        4 files
+      4692      25582        5 files
 --- unkago /O /D:pout k8.lzh
 Extracting EDGE\ONE.DAT OK
 Extracting EDGE\HALF.DAT OK
 Extracting EDGE\ALL.DAT OK
 Extracting EDGE\NOISE.DAT OK
+Extracting EDGE\FIXED.DAT OK
+--- kago z8.zip edge\*.*
+Adding EDGE\ONE.DAT OK
+Adding EDGE\HALF.DAT OK
+Adding EDGE\ALL.DAT OK
+Adding EDGE\NOISE.DAT OK
+Adding EDGE\FIXED.DAT OK
+--- unkago /L z8.zip
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        28       3000 deflat 2026-10-08 12:00 EDGE\ONE.DAT
+       206       8192 deflat 2026-10-08 12:00 EDGE\HALF.DAT
+       377      10240 deflat 2026-10-08 12:00 EDGE\ALL.DAT
+      4096       4096 stored 2026-10-08 12:00 EDGE\NOISE.DAT
+        22         54 deflat 2026-10-08 12:00 EDGE\FIXED.DAT
+---------- ---------- ------                  ------------
+      4729      25582        5 files
+--- unkago /O /D:zpout z8.zip
+Extracting EDGE\ONE.DAT OK
+Extracting EDGE\HALF.DAT OK
+Extracting EDGE\ALL.DAT OK
+Extracting EDGE\NOISE.DAT OK
+Extracting EDGE\FIXED.DAT OK
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

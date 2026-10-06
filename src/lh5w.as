@@ -1,6 +1,9 @@
-; lh5w.as - the -lh5- encoder: KAGO's compression, as LHA 2.x writes it.
+; lh5w.as - the -lh5- and deflate encoder: KAGO's compression, as LHA 2.x
+; writes -lh5-, and deflate for ZIP.
 ;
-; lh5.as, in UNKAGO, reads what this writes. A member's data is a series
+; lh5.as and inflate.as, in UNKAGO, read what this writes. The match
+; finder and the blocks are the same for both; each block's codes are
+; sent the one way or the other (DEFLATE, below). A member's data is a series
 ; of symbols: a byte (a literal), or a match, "copy L bytes from D back",
 ; L from 3 to 256 and D from 1 to 8192. Finding the matches is the LZ
 ; half of the work; giving each symbol a Huffman code is the other.
@@ -58,7 +61,18 @@
 ; pointless: nothing more is written, and lh5w_data or lh5w_end say so,
 ; for KAGO to store the member instead.
 ;
-; mkkago.py's model (note 026) is this file, step for step.
+; DEFLATE (note 029) takes the same symbols and the same blocks, cut
+; where -lh5- cuts them, and sends each one as RFC 1951 asks
+; (d_send_block): a length goes as a code from 257 to 284 and its extra
+; bits, a distance as a code from 0 to 29 and its own, 256 ends the
+; block. Its codes are 15 bits at most, make_tree's mt_max. The block
+; is dynamic, its trees sent first, or fixed, deflate's own codes,
+; whichever is smaller, fixed when they are the same. A match is 256
+; bytes at most, as for -lh5- (deflate's go to 258). The bits go out
+; lowest first: putcode is changed in place for that (lh5w_start), and
+; d_putbits writes the numbers.
+;
+; mkkago.py's model (notes 026, 029) is this file, step for step.
 
 		public	lh5w_start
 		public	lh5w_data
@@ -102,6 +116,19 @@ HEAD		equ	7135		; HASH_SIZE words: each hash's latest
 BUFFER		equ	11231		; BUF_SIZE bytes: the block's symbols
 TABLES_SIZE	equ	15327
 
+; Deflate's (d_send_block): the literals' and lengths' tree in c's
+; arrays, the distances' after it; their counts further on, past the
+; first tree's nodes.
+LL_SYMS		equ	286		; literals, 256, lengths
+D_SYMS		equ	30		; distances
+D_AT		equ	LL_SYMS		; the distances' lengths and codes:
+					;   from symbol 286 in c_len, c_code
+D_FREQ		equ	600		; their counts: from word 600 in
+					;   c_freq, after 2*LL_SYMS-1
+END_BLOCK	equ	256		; the block's last symbol
+MAX_LL		equ	15		; deflate's longest code, and the
+MAX_CL		equ	7		;   code lengths' tree's
+
 		cseg
 
 ; lh5w_start - get ready to pack a member.
@@ -112,12 +139,14 @@ TABLES_SIZE	equ	15327
 ;   head holds no position. The first round puts position 0 in the
 ;   table and searches at 1, after a match of 2 (no match).
 ;
-;   With A = 1, the first time, the text and prev share one segment,
-;   with a 4 KB window: 32 KB of mapper instead of 48 (small, R7).
+;   With A bit 0 set, the first time, the text and prev share one
+;   segment, with a 4 KB window: 32 KB of mapper instead of 48 (small,
+;   R7). With bit 1, the member is deflate; putcode's two bytes are
+;   set for its bits, lowest first (p_put_rot, p_put_mark).
 ;
 ; Input:	DE:HL = the member's size: packing stops when the packed
 ;		size reaches it
-;		A = 0 at full strength, 1 small: the first call decides
+;		A bit 0: small, the first call decides; bit 1: deflate
 ; Output:	CY set = no mapper memory
 ; Modifies:	AF
 ;		BC
@@ -127,10 +156,27 @@ TABLES_SIZE	equ	15327
 ; Scratch:	none
 
 lh5w_start:
-		ld	(small),a
+		ld	(small),a	; the mode, for now
 		call	forget		; page 2: KAGO's until now
 		ld	(limit),hl
 		ld	(limit+2),de
+		ld	a,(small)	; bit 1: deflate
+		and	2
+		ld	(deflate),a
+		ld	hl,11h*256+1	; -lh5-: RL C, a marker of 1
+		jr	z,lh5w_start.lh5
+		ld	hl,19h*256+80h	; deflate: RR C, a marker of 80h
+lh5w_start.lh5:
+		ld	a,h		; putcode: the bits into a byte
+		ld	(p_put_rot+1),a	;   from its lowest bit up, or
+		ld	a,l		;   from its highest down
+		ld	(p_put_mark+1),a
+		ld	(bitbuf),a	; the bit buffer: the marker alone
+		ld	a,(small)	; bit 0: small
+		and	1
+		ld	(small),a
+		ld	a,16		; -lh5-'s codes: 16 bits at most
+		ld	(mt_max),a
 		ld	hl,0
 		ld	(packed),hl
 		ld	(packed+2),hl
@@ -149,8 +195,7 @@ lh5w_start:
 		ld	(done),a
 		ld	(pend),a
 		ld	(mask),a
-		inc	a		; the bit buffer: empty, its
-		ld	(bitbuf),a	;   marker bit alone
+		ld	(d_final),a
 		ld	hl,outbuf
 		ld	(outptr),hl
 		ld	hl,p_freq
@@ -290,8 +335,9 @@ lh5w_data.done:
 ; lh5w_end - the rest of the member, its last bits, and its packed size.
 ;
 ;   The rounds run to the end, the last symbol is kept, the last block
-;   sent, and the last byte filled with 0 bits, as LHA does (7 of them,
-;   which complete it if any bit is waiting).
+;   sent (deflate's marked the last), and the last byte filled with 0
+;   bits, as LHA does (7 of them, which complete it if any bit is
+;   waiting).
 ;
 ; Input:	none
 ; Output:	CY set = the packed size reached the member's: store it
@@ -314,6 +360,8 @@ lh5w_end:
 		jr	nz,lh5w_end.done
 		call	map_tables
 		call	out_pending
+		ld	a,1		; deflate: the last block
+		ld	(d_final),a
 		call	send_block
 		ld	hl,0
 		ld	b,7
@@ -1206,7 +1254,8 @@ bitlen.done:
 ;   huf.c's send_block: c's tree; the block's size (its root's count);
 ;   pt's tree and lengths, and c's lengths (or c's one symbol); p's tree
 ;   and lengths (or its one symbol); then each symbol's code, a match's
-;   distance after it (encode_p). The counts go back to 0.
+;   distance after it (encode_p). The counts go back to 0. A deflate
+;   member's block goes to d_send_block instead.
 ;
 ; Input:	the block, its counts; the tables mapped
 ; Output:	written
@@ -1219,6 +1268,9 @@ bitlen.done:
 ; Scratch:	none
 
 send_block:
+		ld	a,(deflate)	; deflate's way
+		or	a
+		jp	nz,d_send_block
 		ld	hl,c_n		; c's tree
 		call	make_tree	; HL = its root
 		ld	(c_root),hl
@@ -1299,44 +1351,16 @@ send_block.symbol:
 		jr	z,send_block.sent
 		dec	hl
 		ld	(blk_size),hl
-		ld	a,(e_bit)	; every 8: a flags byte
-		or	a
-		jr	nz,send_block.shift
-		ld	hl,(e_at)
-		ld	a,(hl)
-		inc	hl
-		ld	(e_at),hl
-		ld	(e_flags),a
-		ld	a,7
-		ld	(e_bit),a
-		jr	send_block.flag
-send_block.shift:
-		dec	a
-		ld	(e_bit),a
-		ld	a,(e_flags)
-		add	a,a
-		ld	(e_flags),a
-send_block.flag:
-		ld	a,(e_flags)
-		add	a,a		; bit 7: a match
-		ld	hl,(e_at)
-		ld	e,(hl)
-		inc	hl
+		call	buf_next	; CY: a match
 		ld	d,0
 		jr	nc,send_block.literal
 		inc	d		; its symbol: 256 + the byte
-		ld	b,(hl)		; its distance - 1
-		inc	hl
-		ld	c,(hl)
-		inc	hl
-		ld	(e_at),hl
-		push	bc
+		push	bc		; its distance - 1
 		call	c_code_out
 		pop	hl
 		call	encode_p
 		jr	send_block.symbol
 send_block.literal:
-		ld	(e_at),hl
 		call	c_code_out
 		jr	send_block.symbol
 send_block.sent:
@@ -1346,6 +1370,54 @@ send_block.sent:
 		ld	hl,p_freq
 		ld	bc,2*P_SYMS
 		jp	zero
+
+; buf_next - the block's next symbol, from e_at.
+;
+;   A flags byte comes before every 8 symbols (out_sym); e_bit counts
+;   the flags left in e_flags, their next in bit 7.
+;
+; Input:	e_at, e_bit, e_flags; the tables mapped
+; Output:	CY set = a match: E = its length - 3, BC = its distance - 1
+;		CY clear = a literal: E = the byte
+;		e_at, e_bit, e_flags moved on
+; Modifies:	AF
+;		BC
+;		E
+;		HL
+; Scratch:	none
+
+buf_next:
+		ld	a,(e_bit)	; every 8: a flags byte
+		or	a
+		jr	nz,buf_next.shift
+		ld	hl,(e_at)
+		ld	a,(hl)
+		inc	hl
+		ld	(e_at),hl
+		ld	(e_flags),a
+		ld	a,7
+		ld	(e_bit),a
+		jr	buf_next.flag
+buf_next.shift:
+		dec	a
+		ld	(e_bit),a
+		ld	a,(e_flags)
+		add	a,a
+		ld	(e_flags),a
+buf_next.flag:
+		ld	a,(e_flags)
+		add	a,a		; bit 7: a match
+		ld	hl,(e_at)
+		ld	e,(hl)
+		inc	hl
+		jr	nc,buf_next.done
+		ld	b,(hl)		; its distance - 1
+		inc	hl
+		ld	c,(hl)
+		inc	hl
+buf_next.done:
+		ld	(e_at),hl
+		ret
 
 ; c_code_out - c's code for a symbol.
 ;
@@ -1394,6 +1466,866 @@ encode_p:
 		dec	a
 		ld	b,a
 		jp	putbits
+
+; d_send_block - the block, deflate's way: its header, its trees if it
+;   sends them, its symbols' codes, then the end of block.
+;
+;   The symbols are counted again, as deflate numbers them (d_walk): a
+;   literal is its byte, a match a length code and a distance code; 256
+;   ends the block. From the counts, two trees, MAX_LL bits at most: the
+;   literals' and lengths' (286 symbols) in c's arrays, and the
+;   distances' (30) after it, from D_AT; their counts from D_FREQ
+;   (d_tree). Their lengths go out in one run, HLIT always 286, with a
+;   third tree, MAX_CL bits at most (cl_runs). Then d_compare weighs
+;   the block both ways: fixed, if no bigger, and fixed_codes puts its
+;   codes in the trees' place.
+;
+;   The header: BFINAL, BTYPE; for a dynamic block, HLIT - 257 (29),
+;   HDIST - 1, HCLEN - 4, then the third tree's lengths, 3 bits each, in
+;   cl_order's order, and the run.
+;
+; Input:	the block; d_final: 1 for the member's last
+;		the tables mapped
+; Output:	written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	none
+
+d_send_block:
+		xor	a		; first counted: d_write 0
+		ld	(d_write),a
+		ld	hl,(c_freq_at)	; both trees' counts: 0
+		ld	bc,2*D_FREQ+2*D_SYMS
+		call	zero
+		call	d_walk		; each symbol, counted
+		ld	de,END_BLOCK	; and the block's end
+		call	d_out
+		ld	a,MAX_LL	; the two trees
+		ld	(mt_max),a
+		ld	bc,LL_SYMS	; literals and lengths
+		ld	de,0
+		ld	hl,0
+		call	d_tree
+		ld	bc,D_SYMS	; distances
+		ld	de,D_AT
+		ld	hl,D_FREQ
+		call	d_tree
+		ld	hl,(c_len_at)	; HDIST: the distances' lengths,
+		ld	de,D_AT		;   not the zeros after them
+		add	hl,de
+		ld	bc,D_SYMS
+		call	trim
+		ld	a,c
+		ld	(d_hdist),a
+		ld	hl,t_freq	; the lengths' tree, from the run
+		ld	bc,2*T_SYMS
+		call	zero
+		call	cl_runs
+		ld	a,MAX_CL
+		ld	(mt_max),a
+		ld	hl,t_n
+		call	guarded_tree
+		ld	hl,cl_order+T_SYMS-1	; HCLEN: its lengths sent, in
+		ld	b,T_SYMS	;   cl_order's order, 4 at least
+d_send_block.hclen:
+		ld	a,b
+		cp	5
+		jr	c,d_send_block.sized
+		ld	e,(hl)
+		ld	d,0
+		push	hl
+		ld	hl,pt_len
+		add	hl,de
+		ld	a,(hl)
+		pop	hl
+		or	a
+		jr	nz,d_send_block.sized
+		dec	hl
+		dec	b
+		jr	d_send_block.hclen
+d_send_block.sized:
+		ld	a,b
+		ld	(d_hclen),a
+		call	d_compare	; CY: dynamic is smaller
+		jr	nc,d_send_block.fixed
+		ld	a,(d_final)	; BFINAL, BTYPE 2, HLIT 29
+		or	4+29*8
+		ld	l,a
+		ld	h,0
+		ld	b,8
+		call	d_putbits
+		ld	a,(d_hclen)	; HDIST - 1, HCLEN - 4
+		sub	4
+		ld	l,a
+		ld	h,0
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		ld	a,(d_hdist)
+		dec	a
+		or	l
+		ld	l,a
+		ld	b,9
+		call	d_putbits
+		ld	hl,cl_order	; the lengths' tree's lengths
+		ld	a,(d_hclen)
+		ld	b,a
+d_send_block.cl:
+		push	bc
+		push	hl
+		ld	e,(hl)
+		ld	d,0
+		ld	hl,pt_len
+		add	hl,de
+		ld	l,(hl)
+		ld	b,3
+		call	d_putbits
+		pop	hl
+		inc	hl
+		pop	bc
+		djnz	d_send_block.cl
+		ld	a,1		; the run, written
+		ld	(d_write),a
+		call	cl_runs
+		jr	d_send_block.codes
+d_send_block.fixed:
+		ld	a,(d_final)	; BFINAL, BTYPE 1
+		or	2
+		ld	l,a
+		ld	h,0
+		ld	b,3
+		call	d_putbits
+		call	fixed_codes
+d_send_block.codes:
+		ld	a,1		; the symbols' codes
+		ld	(d_write),a
+		call	d_walk
+		ld	de,END_BLOCK	; and the end of block
+		ld	b,0
+		jp	d_out
+
+; d_walk - every symbol in the block, as deflate numbers it, to d_out.
+;
+; Input:	the block: from buf_at, bufpos bytes; d_write
+;		the tables mapped
+; Output:	counted, or written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+d_walk:
+		ld	hl,(buf_at)
+		ld	(e_at),hl
+		ld	de,(bufpos)	; the block's end
+		add	hl,de
+		ld	(d_end),hl
+		xor	a
+		ld	(e_bit),a
+d_walk.next:
+		ld	hl,(e_at)	; at the end: done
+		ld	de,(d_end)
+		or	a
+		sbc	hl,de
+		ret	z
+		call	buf_next	; CY: a match
+		jr	c,d_walk.match
+		ld	d,0		; a literal: its byte
+		ld	b,0
+		call	d_out
+		jr	d_walk.next
+d_walk.match:
+		push	bc
+		ld	a,e		; its length's code
+		call	len_code
+		call	d_out
+		pop	hl		; its distance's
+		call	dist_code
+		call	d_out
+		jr	d_walk.next
+
+; d_out - one symbol: counted (d_write 0), or its code written, and its
+;   extra bits after it.
+;
+; Input:	DE = the symbol: 0 to 285, D_AT on for a distance
+;		HL = its extra bits; B = how many, 0 for none
+;		d_write; the trees' codes when writing
+; Output:	counted, or written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+d_out:
+		ld	a,(d_write)
+		or	a
+		jr	nz,d_out.write
+		call	freq_at		; one more
+		inc	(hl)
+		ret	nz
+		inc	hl
+		inc	(hl)
+		ret
+d_out.write:
+		push	hl
+		push	bc
+		call	c_code_out
+		pop	bc
+		pop	hl
+		jp	d_putbits
+
+; freq_at - where a symbol's count is: c_freq's word for a literal or a
+;   length, D_FREQ's on for a distance.
+;
+; Input:	DE = the symbol: 0 to 285, D_AT on for a distance
+; Output:	HL -> its count
+; Modifies:	F
+;		BC
+;		HL
+; Scratch:	none
+
+freq_at:
+		ld	h,d
+		ld	l,e
+		ld	bc,-D_AT	; CY: a distance
+		add	hl,bc
+		ld	h,d
+		ld	l,e
+		jr	nc,freq_at.word
+		ld	bc,D_FREQ-D_AT
+		add	hl,bc
+freq_at.word:
+		add	hl,hl
+		ld	bc,(c_freq_at)
+		add	hl,bc
+		ret
+
+; len_code - a match's length code, and its extra bits.
+;
+;   Lengths 3 to 10 are codes 257 to 264. From 11 on, each four codes
+;   cover twice as many lengths as the four before: length - 3, k bits
+;   long, is code 257 + 4 (k - 2) + its two bits below the highest, and
+;   its k - 3 lowest bits follow.
+;
+; Input:	A = the length - 3: 0 to 253
+; Output:	DE = its code: 257 to 284
+;		HL = the length - 3; B = how many of its bits follow
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+len_code:
+		ld	l,a
+		ld	h,0
+		ld	b,h		; no bits follow
+		cp	8
+		jr	c,len_code.code	; 3 to 10: 257 + it
+		ld	c,a
+		call	bitlen		; A = k: 4 to 8
+		sub	3
+		ld	b,a		; k - 3 bits follow
+		push	bc
+		ld	a,c
+len_code.shift:
+		srl	a
+		djnz	len_code.shift
+		pop	bc
+		and	3		; the two below the highest
+		ld	e,a
+		ld	a,b
+		inc	a
+		add	a,a
+		add	a,a
+		add	a,e		; 4 (k - 2) + them
+		ld	l,c
+		ld	h,0
+len_code.code:
+		ld	e,a
+		ld	d,1		; 256 + it, and 1
+		inc	de
+		ret
+
+; dist_code - a match's distance code, and its extra bits.
+;
+;   Distances 1 to 4 are codes 0 to 3. From 5 on, each two codes cover
+;   twice as many as the two before: distance - 1, k bits long, is code
+;   2 (k - 1) + its bit below the highest, and its k - 2 lowest bits
+;   follow.
+;
+; Input:	HL = the distance - 1: 0 to 8191
+; Output:	DE = D_AT + its code: 0 to 25
+;		HL = the distance - 1; B = how many of its bits follow
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+dist_code:
+		ld	b,0		; no bits follow
+		ld	a,h
+		or	a
+		jr	nz,dist_code.long
+		ld	a,l
+		cp	4
+		jr	c,dist_code.code	; 1 to 4: it
+dist_code.long:
+		push	hl
+		call	bitlen		; A = k: 3 to 13
+		pop	hl
+		push	hl
+		sub	2
+		ld	b,a		; k - 2 bits follow
+		push	bc
+dist_code.shift:
+		srl	h
+		rr	l
+		djnz	dist_code.shift
+		pop	bc
+		ld	a,l		; the bit below the highest
+		and	1
+		ld	c,a
+		ld	a,b
+		inc	a
+		add	a,a		; 2 (k - 1) + it
+		add	a,c
+		pop	hl
+dist_code.code:
+		ld	e,a
+		ld	d,0
+		push	hl
+		ld	hl,D_AT
+		add	hl,de
+		ex	de,hl
+		pop	hl
+		ret
+
+; d_tree, guarded_tree - one of deflate's trees.
+;
+;   d_tree makes its descriptor (d_desc) and goes on into guarded_tree,
+;   which makes sure two symbols at least are counted (two_used) before
+;   make_tree.
+;
+; Input:	d_tree: BC = how many symbols; DE = where its lengths and
+;		codes start, by symbol: 0, or D_AT; HL = where its counts
+;		start, by symbol: 0, or D_FREQ
+;		guarded_tree: HL -> a descriptor: n, freq, len, code
+;		mt_max
+; Output:	as make_tree
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	none
+
+d_tree:
+		call	d_desc
+guarded_tree:
+		push	hl
+		call	two_used
+		pop	hl
+		jp	make_tree
+
+; d_desc - a descriptor for make_tree or lens_code, in dt_n: one of
+;   deflate's trees, in c's arrays.
+;
+; Input:	BC = how many symbols; DE = where its lengths and codes
+;		start, by symbol; HL = where its counts start, by symbol
+; Output:	HL -> dt_n
+; Modifies:	BC
+;		HL
+; Scratch:	none
+
+d_desc:
+		ld	(dt_n),bc
+		add	hl,hl
+		ld	bc,(c_freq_at)
+		add	hl,bc
+		ld	(dt_freq),hl
+		ld	hl,(c_len_at)
+		add	hl,de
+		ld	(dt_len),hl
+		ld	hl,(c_code_at)
+		add	hl,de
+		add	hl,de
+		ld	(dt_code),hl
+		ld	hl,dt_n
+		ret
+
+; two_used - two symbols counted at least, for a tree.
+;
+;   A tree of one symbol, or none, would have codes deflate's readers
+;   may refuse: a block of literals only has no distance. With fewer
+;   than two, symbols 0 and 1 count once, if they don't already, as
+;   zlib's deflate does.
+;
+; Input:	HL -> n, then a pointer to the counts
+; Output:	the counts
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+two_used:
+		ld	c,(hl)		; BC = n
+		inc	hl
+		ld	b,(hl)
+		inc	hl
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		ex	de,hl		; HL -> the counts
+		push	hl
+		ld	d,0		; D = how many used
+two_used.count:
+		ld	a,(hl)
+		inc	hl
+		or	(hl)
+		inc	hl
+		jr	z,two_used.next
+		inc	d
+		ld	a,d
+		cp	2
+		jr	z,two_used.enough
+two_used.next:
+		dec	bc
+		ld	a,b
+		or	c
+		jr	nz,two_used.count
+		pop	hl		; fewer: 0 and 1, once
+		ld	b,2
+two_used.one:
+		ld	a,(hl)
+		inc	hl
+		or	(hl)
+		dec	hl
+		jr	nz,two_used.has
+		ld	(hl),1
+two_used.has:
+		inc	hl
+		inc	hl
+		djnz	two_used.one
+		ret
+two_used.enough:
+		pop	hl
+		ret
+
+; cl_runs - the literals' and distances' lengths, in one run, for the
+;   lengths' tree: counted (d_write 0) or written.
+;
+;   The 286 lengths, then HDIST more. A length goes as itself once,
+;   then 3 to 6 more of it as 16 (2 bits: how many - 3); zeros as 18,
+;   11 to 138 of them (7 bits: - 11), then 17, 3 to 10 (3 bits: - 3).
+;   What is left, 1 or 2, goes as itself. A run may cross from the
+;   literals to the distances.
+;
+; Input:	c_len; d_hdist; d_write
+; Output:	t_freq counted, or the run written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+cl_runs:
+		ld	hl,(c_len_at)
+		ld	(cr_at),hl
+		ld	a,(d_hdist)
+		ld	l,a
+		ld	h,0
+		ld	de,LL_SYMS
+		add	hl,de
+		ld	(cr_n),hl
+cl_runs.next:
+		ld	bc,(cr_n)
+		ld	a,b
+		or	c
+		ret	z
+		ld	hl,(cr_at)	; DE = how many the same
+		ld	a,(hl)
+		ld	(cr_v),a
+		ld	de,0
+cl_runs.same:
+		ld	a,b
+		or	c
+		jr	z,cl_runs.counted
+		ld	a,(cr_v)
+		cp	(hl)
+		jr	nz,cl_runs.counted
+		inc	hl
+		inc	de
+		dec	bc
+		jr	cl_runs.same
+cl_runs.counted:
+		ld	(cr_at),hl
+		ld	(cr_n),bc
+		ld	a,(cr_v)
+		or	a
+		jr	z,cl_runs.zeros
+		push	de		; a length: itself
+		ld	b,0
+		call	cl_sym
+		pop	de
+		dec	de
+		ld	ix,rep_16	; then 16s
+		call	cl_rep
+		jr	cl_runs.tail
+cl_runs.zeros:
+		ld	ix,rep_18	; zeros: 18s, then a 17
+		call	cl_rep
+		ld	ix,rep_17
+		call	cl_rep
+cl_runs.tail:
+		ld	a,e		; 0 to 2 left: each itself
+		or	a
+		jr	z,cl_runs.next
+		push	de
+		ld	a,(cr_v)
+		ld	b,0
+		call	cl_sym
+		pop	de
+		dec	e
+		jr	cl_runs.tail
+
+; cl_rep - as many repeats of one kind as the run allows.
+;
+; Input:	IX -> the kind: its symbol, the fewest and the most it
+;		says, its extra bits
+;		DE = how many are left in the run
+; Output:	DE = how many are left: fewer than the fewest
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+cl_rep:
+		ld	a,d
+		or	a
+		jr	nz,cl_rep.most
+		ld	a,e
+		cp	(ix+1)		; too few
+		ret	c
+		cp	(ix+2)
+		jr	c,cl_rep.k
+cl_rep.most:
+		ld	a,(ix+2)	; as many as it says
+cl_rep.k:
+		push	de
+		push	af
+		sub	(ix+1)		; the extra bits: how many - fewest
+		ld	l,a
+		ld	h,0
+		ld	b,(ix+3)
+		ld	a,(ix+0)
+		call	cl_sym
+		pop	af
+		pop	de
+		ld	l,a		; fewer left
+		ld	h,0
+		ex	de,hl
+		or	a
+		sbc	hl,de
+		ex	de,hl
+		jr	cl_rep
+
+; cl_sym - one of the lengths' tree's symbols: counted (d_write 0), or
+;   its code written, and its extra bits after it.
+;
+; Input:	A = the symbol: 0 to 18
+;		HL = its extra bits; B = how many, 0 for none
+;		d_write; pt_len, pt_code when writing
+; Output:	t_freq counted, or written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+cl_sym:
+		push	hl
+		push	bc
+		ld	c,a
+		ld	a,(d_write)
+		or	a
+		ld	a,c
+		jr	nz,cl_sym.write
+		call	t_count
+		pop	bc
+		pop	hl
+		ret
+cl_sym.write:
+		call	pt_code_out
+		pop	bc
+		pop	hl
+		jp	d_putbits
+
+; d_compare - the block's size, dynamic less fixed, in bits.
+;
+;   Only what differs: each symbol's count times its code's length,
+;   dynamic less fixed (the extra bits are the same both ways); and
+;   for dynamic, the run, its extra bits, the lengths' tree's lengths,
+;   and HLIT, HDIST and HCLEN (14 bits). In acc, 24 bits, signed.
+;
+; Input:	the counts and lengths of the three trees; d_hclen
+; Output:	CY set = dynamic is smaller
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+d_compare:
+		ld	hl,0
+		ld	(acc),hl
+		xor	a
+		ld	(acc+2),a
+		ld	de,0		; the literals, lengths, distances
+d_compare.ld:
+		push	de
+		call	freq_at
+		ld	a,(hl)		; HL = the count
+		inc	hl
+		ld	h,(hl)
+		ld	l,a
+		push	hl
+		call	fixed_len	; less the fixed length
+		ld	c,a
+		ld	hl,(c_len_at)
+		add	hl,de
+		ld	a,(hl)
+		sub	c
+		pop	hl
+		call	acc_mul
+		pop	de
+		inc	de
+		ld	hl,LL_SYMS+D_SYMS
+		or	a
+		sbc	hl,de
+		jr	nz,d_compare.ld
+		ld	ix,t_freq	; the run: its codes and bits
+		ld	de,pt_len
+		ld	c,0
+d_compare.cl:
+		ld	a,c		; B = the symbol's extra bits
+		ld	b,0
+		cp	16
+		jr	c,d_compare.extra
+		ld	b,2
+		jr	z,d_compare.extra
+		ld	b,3
+		cp	17
+		jr	z,d_compare.extra
+		ld	b,7
+d_compare.extra:
+		ld	a,(de)
+		add	a,b
+		ld	l,(ix+0)
+		ld	h,(ix+1)
+		push	de
+		push	bc
+		call	acc_mul
+		pop	bc
+		pop	de
+		inc	ix
+		inc	ix
+		inc	de
+		inc	c
+		ld	a,c
+		cp	T_SYMS
+		jr	nz,d_compare.cl
+		ld	a,(d_hclen)	; 14 + 3 bits for each length
+		ld	l,a		;   of the lengths' tree
+		ld	h,0
+		ld	d,h
+		ld	e,l
+		add	hl,hl
+		add	hl,de
+		ld	de,14
+		add	hl,de
+		ld	a,1
+		call	acc_mul
+		ld	a,(acc+2)	; negative: dynamic is smaller
+		rla
+		ret
+
+; acc_mul - acc += HL * A.
+;
+; Input:	HL = a count
+;		A = what each one adds: -15 to 15, or 1
+; Output:	acc
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+acc_mul:
+		ld	b,a
+		ld	a,h		; nothing to add
+		or	l
+		ret	z
+		ld	a,b
+		or	a
+		ret	z
+		ld	de,(acc)	; C:DE = acc
+		ld	a,(acc+2)
+		ld	c,a
+		bit	7,b
+		jr	nz,acc_mul.less
+acc_mul.add:
+		ex	de,hl
+		add	hl,de
+		ex	de,hl
+		jr	nc,acc_mul.added
+		inc	c
+acc_mul.added:
+		djnz	acc_mul.add
+		jr	acc_mul.done
+acc_mul.less:
+		ld	a,b
+		neg
+		ld	b,a
+acc_mul.sub:
+		ex	de,hl
+		or	a
+		sbc	hl,de
+		ex	de,hl
+		jr	nc,acc_mul.subbed
+		dec	c
+acc_mul.subbed:
+		djnz	acc_mul.sub
+acc_mul.done:
+		ld	(acc),de
+		ld	a,c
+		ld	(acc+2),a
+		ret
+
+; fixed_len - a symbol's fixed code length: literals 0 to 143, 8 bits;
+;   144 to 255, 9; 256 to 279, 7; 280 to 285, 8; a distance, 5.
+;
+; Input:	DE = the symbol: 0 to 285, D_AT on for a distance
+; Output:	A = the length
+; Modifies:	AF
+; Scratch:	none
+
+fixed_len:
+		ld	a,d
+		or	a
+		jr	nz,fixed_len.high
+		ld	a,e
+		cp	144
+		ld	a,8
+		ret	c
+		inc	a
+		ret
+fixed_len.high:
+		ld	a,e		; 256 on
+		cp	280-256
+		ld	a,7
+		ret	c
+		ld	a,e
+		cp	D_AT-256
+		ld	a,8
+		ret	c
+		ld	a,5
+		ret
+
+; fixed_codes - the fixed codes, in the trees' place.
+;
+;   The literals' codes are made from 288 lengths: 286 and 287, 8 bits,
+;   count for the 9-bit codes after them to be right, though they are
+;   never sent. The distances' lengths, 5, then take their place.
+;
+; Input:	none
+; Output:	c_len, c_code: the fixed codes
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	none
+
+fixed_codes:
+		ld	hl,(c_len_at)	; every length
+		ld	de,0
+fixed_codes.len:
+		call	fixed_len
+		ld	(hl),a
+		inc	hl
+		inc	de
+		push	hl
+		ld	hl,LL_SYMS+D_SYMS
+		or	a
+		sbc	hl,de
+		pop	hl
+		jr	nz,fixed_codes.len
+		ld	hl,(c_len_at)	; 286 and 287: 8, for now
+		ld	de,LL_SYMS
+		add	hl,de
+		ld	(hl),8
+		inc	hl
+		ld	(hl),8
+		push	hl
+		ld	bc,LL_SYMS+2	; the literals' and lengths' codes
+		ld	de,0
+		ld	hl,0
+		call	d_desc
+		call	lens_code
+		pop	hl		; then the distances'
+		ld	(hl),5
+		dec	hl
+		ld	(hl),5
+		ld	bc,D_SYMS
+		ld	de,D_AT
+		ld	hl,D_FREQ
+		call	d_desc
+		jp	lens_code
+
+; d_putbits - write bits, lowest first: deflate's numbers.
+;
+; Input:	B = how many bits: 0 to 16
+;		HL = the bits: the lowest B
+; Output:	written, through outbuf
+; Modifies:	AF
+;		BC
+;		HL
+; Scratch:	none
+
+d_putbits:
+		inc	b
+		dec	b
+		ret	z		; none
+		ld	a,(bitbuf)
+		ld	c,a
+d_putbits.bit:
+		srl	h
+		rr	l
+		rr	c
+		jr	nc,d_putbits.more
+		call	put_byte	; C = 8 bits
+		ld	c,80h
+d_putbits.more:
+		djnz	d_putbits.bit
+		ld	a,c
+		ld	(bitbuf),a
+		ret
 
 ; patch_small - the code for small packing: the text an 8 KB ring at
 ;   8000h, prev 4096 words at A000h, both in one segment.
@@ -1493,11 +2425,14 @@ forget:
 ;   walks the tree recursively for each depth's number of symbols, is a
 ;   loop here: a node is always made after its two branches, so going
 ;   from the root down through the nodes, each one's depth is known
-;   before its branches are reached. A depth past 16 counts as 16, as
-;   count_leaf counts it.
+;   before its branches are reached. A depth past mt_max counts as
+;   mt_max, as count_leaf counts one past 16: 16 for -lh5-, 15 or 7 for
+;   deflate. make_len then makes the lengths fit, as it does for 16.
+;   make_code, the last step, is also lens_code's.
 ;
 ; Input:	HL -> n, then pointers to freq, len and code: 4 words
 ;		freq: n counts, room for 2n-1
+;		mt_max: the longest code, 16 at most
 ; Output:	HL = the root: n or more, or the one symbol used (0 when
 ;		none is), whose code is 0 bits long
 ;		len, code: the n symbols' lengths and codes
@@ -1672,16 +2607,17 @@ make_tree.pair:
 		ld	(hl),0
 		ld	hl,(mt_root)
 make_tree.depth:
-		push	hl		; C = its branches' depth
-		ld	de,(mt_depth)
+		push	hl		; C = its branches' depth,
+		ld	de,(mt_depth)	;   mt_max at most
 		add	hl,de
 		ld	a,(hl)
 		inc	a
-		cp	17
-		jr	c,make_tree.capped
-		ld	a,16
-make_tree.capped:
 		ld	c,a
+		ld	a,(mt_max)
+		cp	c
+		jr	nc,make_tree.capped
+		ld	c,a
+make_tree.capped:
 		pop	hl
 		push	hl
 		add	hl,hl
@@ -1702,9 +2638,10 @@ make_tree.capped:
 		dec	hl
 		jr	make_tree.depth
 make_tree.counted:
-		ld	hl,0		; make_len: cum, the sum of each
-		ld	ix,leaf_num+2	;   count << (16 - depth)
-		ld	b,16
+		ld	hl,0FFFFh	; make_len: cum, the sum of each
+		ld	ix,leaf_num+2	;   count << (max - depth), less
+		ld	a,(mt_max)	;   1 << max: the -1, shifted
+		ld	b,a
 make_tree.cum:
 		add	hl,hl
 		ld	e,(ix+0)
@@ -1716,13 +2653,19 @@ make_tree.cum:
 		ld	a,h
 		or	l
 		jr	z,make_tree.fits
-		ex	de,hl		; too deep: leaf_num[16] -= cum
-		ld	hl,(leaf_num+32)
-		or	a
-		sbc	hl,de
-		ld	(leaf_num+32),hl
+		ex	de,hl		; too deep: leaf_num[max] -= cum
+		call	leaf_max
+		ld	a,(hl)
+		sub	e
+		ld	(hl),a
+		inc	hl
+		ld	a,(hl)
+		sbc	a,d
+		ld	(hl),a
 make_tree.adjust:
-		ld	hl,leaf_num+30	; the deepest depth under 16
+		call	leaf_max	; the deepest depth under max
+		dec	hl
+		dec	hl
 make_tree.find:
 		ld	a,(hl)		;   that has symbols
 		inc	hl
@@ -1757,9 +2700,10 @@ make_tree.found:
 		or	e
 		jr	nz,make_tree.adjust
 make_tree.fits:
-		ld	ix,(mt_code)	; the lengths, 16 down to 1,
-		ld	hl,leaf_num+32	;   in the symbols' order
-		ld	c,16
+		ld	ix,(mt_code)	; the lengths, max down to 1,
+		call	leaf_max	;   in the symbols' order
+		ld	a,(mt_max)
+		ld	c,a
 make_tree.length:
 		ld	e,(hl)
 		inc	hl
@@ -1787,6 +2731,7 @@ make_tree.next_length:
 		pop	hl
 		dec	c
 		jr	nz,make_tree.length
+make_code:
 		ld	ix,leaf_num+2	; make_code: each length's first
 		ld	iy,first_code+2	;   code
 		ld	de,0
@@ -1859,6 +2804,64 @@ make_tree.coded:
 		jr	nz,make_tree.code
 		ld	hl,(mt_root)
 		ret
+
+; leaf_max - where leaf_num[mt_max] is, for make_tree.
+;
+; Input:	mt_max
+; Output:	HL -> it
+; Modifies:	AF
+;		BC
+;		HL
+; Scratch:	none
+
+leaf_max:
+		ld	a,(mt_max)
+		add	a,a
+		ld	l,a
+		ld	h,0
+		ld	bc,leaf_num
+		add	hl,bc
+		ret
+
+; lens_code - a tree's codes from its lengths alone: make_tree's last
+;   step, make_code, after each length's symbols are counted. For the
+;   fixed codes, fewer than 256 of each length.
+;
+; Input:	HL -> n, then pointers to freq, len and code: 4 words
+;		len: n lengths
+; Output:	code: the n codes
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	none
+
+lens_code:
+		ld	de,mt_n
+		ld	bc,8
+		ldir
+		ld	hl,leaf_num	; each length's symbols: none
+		ld	bc,34
+		call	zero
+		ld	hl,(mt_len)
+		ld	bc,(mt_n)
+lens_code.count:
+		ld	e,(hl)		; one more of its length
+		inc	hl
+		ld	d,0
+		push	hl
+		ld	hl,leaf_num
+		add	hl,de
+		add	hl,de
+		inc	(hl)
+		pop	hl
+		dec	bc
+		ld	a,b
+		or	c
+		jr	nz,lens_code.count
+		jp	make_code
 
 ; branch - one branch of a node, in make_tree: a symbol counts at depth
 ;   C, a node gets C as its depth.
@@ -2422,6 +3425,11 @@ pt_code_out:
 ;   bits gather in bitbuf, which starts as 1: the 1 is a marker, shifted
 ;   up as bits come in, and when it falls out, 8 bits are there.
 ;
+;   For deflate, lh5w_start makes RL C an RR C, and the marker 80h:
+;   then each bit goes in at the top and the marker falls out of bit 0,
+;   so the first bit is the byte's lowest. A code still goes highest
+;   bit first, as deflate wants; its numbers go through d_putbits.
+;
 ; Input:	B = how many bits: 0 to 16 (putbits: 1 to 16)
 ;		HL = the bits
 ; Output:	written, through outbuf
@@ -2446,9 +3454,11 @@ putcode:
 		ld	c,a
 putcode.bit:
 		add	hl,hl
+p_put_rot:
 		rl	c
 		jr	nc,putcode.more
 		call	put_byte	; C = 8 bits
+p_put_mark:
 		ld	c,1
 putcode.more:
 		djnz	putcode.bit
@@ -2559,6 +3569,10 @@ zero:
 ;			for small packing; PATCH_COUNT of them
 ; weights		make_code: the step between codes of each length,
 ;			1 to 16 bits
+; cl_order		deflate: the order the lengths' tree's lengths go in
+; rep_16, rep_17, rep_18
+;			cl_runs' repeats: the symbol, the fewest and the
+;			most it says, its extra bits
 ;
 offsets:	defw	C_FREQ,C_LEN,C_CODE,LEFT,RIGHT,DEPTH,HEAP
 		defw	HEAD,BUFFER
@@ -2597,6 +3611,10 @@ patch_list:	defw	p_copy_mask+1		; and 1Fh: an 8 KB ring
 		defb	1
 weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 		defw	80h,40h,20h,10h,8,4,2,1
+cl_order:	defb	16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15
+rep_16:		defb	16,3,6,2
+rep_17:		defb	17,3,10,3
+rep_18:		defb	18,11,138,7
 
 		dseg
 
@@ -2609,6 +3627,7 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ; fast			1 when all three are in the primary mapper
 ; small, win_size	1 for small packing (lh5w_start); how far back a
 ;			match may be: 8192, or 4096 small
+; deflate		not 0 for a deflate member (lh5w_start)
 ; p2cur, p2fast		map: which of them page 2 shows, 0 for none;
 ;			whether p2seg may switch
 ; c_n, c_freq_at, c_len_at, c_code_at
@@ -2661,6 +3680,7 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ; ep_k			encode_p: the distance's size
 ; mt_n, mt_freq, mt_len, mt_code
 ;			make_tree: the tree it is making
+; mt_max		make_tree: the longest code, 16 for -lh5-
 ; mt_left, mt_right, mt_depth
 ;			left_at and right_at less 2n, depth_at less n:
 ;			indexed by node
@@ -2678,6 +3698,16 @@ weights:	defw	8000h,4000h,2000h,1000h,800h,400h,200h,100h
 ; wp_special, wp_nbit, wp_n, wp_i
 ;			write_pt_len: special and nbit, how many, i
 ; wc_n, wc_at		write_c_len: how many are left, and where
+; d_final		1 for the member's last block: deflate's BFINAL
+; d_write		d_walk, cl_runs: 0 to count, 1 to write
+; d_end			d_walk: where the block ends
+; dt_n, dt_freq, dt_len, dt_code
+;			d_desc: a tree's descriptor
+; d_hdist, d_hclen	the distances' lengths sent, and the lengths'
+;			tree's
+; acc			d_compare: dynamic less fixed, 3 bytes
+; cr_at, cr_n, cr_v	cl_runs: where it is, how many are left, the
+;			length being repeated
 ; outbuf		the bytes for the archive: OUT_SIZE, in the buffers
 ;			segment
 ;
@@ -2688,6 +3718,7 @@ tables_fp:	defs	4
 fast:		defs	1
 small:		defs	1
 win_size:	defs	2
+deflate:	defs	1
 p2cur:		defs	1
 p2fast:		defs	1
 c_n:		defs	2
@@ -2756,6 +3787,7 @@ mt_n:		defs	2
 mt_freq:	defs	2
 mt_len:		defs	2
 mt_code:	defs	2
+mt_max:		defs	1
 mt_left:	defs	2
 mt_right:	defs	2
 mt_depth:	defs	2
@@ -2781,6 +3813,19 @@ wp_n:		defs	1
 wp_i:		defs	1
 wc_n:		defs	2
 wc_at:		defs	2
+d_final:	defs	1
+d_write:	defs	1
+d_end:		defs	2
+dt_n:		defs	2
+dt_freq:	defs	2
+dt_len:		defs	2
+dt_code:	defs	2
+d_hdist:	defs	1
+d_hclen:	defs	1
+acc:		defs	3
+cr_at:		defs	2
+cr_n:		defs	2
+cr_v:		defs	1
 
 		dseg	buffers
 qh:		defs	2*MAX_MATCH

@@ -305,12 +305,12 @@ rem the refusals, a format the switch chooses, a directory named, files
 rem named twice, /A adding to K5.LZH and Z5.ZIP, and to copies of
 rem ZDESC.ZIP (a data descriptor) and ZCOMM.ZIP (comments, in
 rem TESTS\OUT\ZIP), and an archive among the files it is made of, made
-rem and then added to. The same tree goes into Z1.ZIP, which UNKAGO
-rem lists and extracts into ZOUT, and KIN\SUB into Z2.DAT, ZIP by the
-rem switch. KAGO never replaces an archive, so its archives are deleted
-rem first. RO.TXT is left read-only, so it is made writable first, for
-rem /O to replace it. What KOUT\KIN and ZOUT\KIN hold goes into
-rem TESTS\DATES.TXT.
+rem and then added to. The same tree goes into Z1.ZIP, KIN\BIG.DAT
+rem deflated, which UNKAGO lists and extracts into ZOUT, and KIN\SUB
+rem into Z2.DAT, ZIP by the switch. KAGO never replaces an archive, so
+rem its archives are deleted first. RO.TXT is left read-only, so it is
+rem made writable first, for /O to replace it. What KOUT\KIN and
+rem ZOUT\KIN hold goes into TESTS\DATES.TXT.
 echo === KAGO ARCHIVING>>tests\results.txt
 attrib -r tests\out\kin\ro.txt
 attrib -r tests\out\kout\kin\ro.txt
@@ -431,15 +431,18 @@ rem packed: -lh5-, but for the files that do not get smaller, which are
 rem stored. UNKAGO lists it, then extracts it into POUT for the Mac to
 rem compare; then /A replaces KIN\A.TXT in it, which copies the -lh5-
 rem member KIN\BIG.DAT as it is, and UNKAGO lists it again. EDGE.LZH
-rem holds the encoder's edge cases, extracted into EDGE: one byte over
+rem holds the encoders' edge cases, extracted into EDGE: one byte over
 rem and over (ONE.DAT), runs of 128 and 256 different bytes (HALF.DAT,
-rem ALL.DAT), and noise, which does not get smaller (NOISE.DAT). They go
-rem into K8.LZH, listed and extracted into POUT too.
+rem ALL.DAT), noise, which does not get smaller (NOISE.DAT), and a short
+rem text deflate sends with its fixed codes (FIXED.DAT). They go into
+rem K8.LZH, listed and extracted into POUT too, and into Z8.ZIP,
+rem deflate, listed and extracted into ZPOUT.
 echo === KAGO PACKING>>tests\results.txt
 attrib -r tests\out\pout\kin\ro.txt
 cd tests\out
 del k7.lzh
 del k8.lzh
+del z8.zip
 echo --- kago k7.lzh kin\*.*>>..\results.txt
 ..\..\build\kago k7.lzh kin\*.*>>..\results.txt
 echo --- unkago /L k7.lzh>>..\results.txt
@@ -458,26 +461,45 @@ echo --- unkago /L k8.lzh>>..\results.txt
 ..\..\build\unkago /L k8.lzh>>..\results.txt
 echo --- unkago /O /D:pout k8.lzh>>..\results.txt
 ..\..\build\unkago /O /D:pout k8.lzh>>..\results.txt
+echo --- kago z8.zip edge\*.*>>..\results.txt
+..\..\build\kago z8.zip edge\*.*>>..\results.txt
+echo --- unkago /L z8.zip>>..\results.txt
+..\..\build\unkago /L z8.zip>>..\results.txt
+echo --- unkago /O /D:zpout z8.zip>>..\results.txt
+..\..\build\unkago /O /D:zpout z8.zip>>..\results.txt
 cd ..\..
 
 rem MEMORY takes mapper memory with a RAM disk, and asks for more. On a
-rem plain FS-A1GT (512 KB, about 336 KB free), a 288 KB RAM disk leaves
-rem about 48 KB: too little for KAGO's full packing (64 KB). KAGO says
-rem so and asks; N (TESTS\NO.TXT) stops it, and /Y packs KIN\BIG.DAT
-rem small, a 4 KB window, into MEM\M1.LZH. A 304 KB one leaves about
-rem 32 KB, and Y (TESTS\YES.TXT) stores it, into MEM\M2.LZH. A 320 KB
+rem plain FS-A1GT (512 KB, about 336 KB free), a 272 KB RAM disk leaves
+rem about 64 KB: too little for ZIP's full packing (80 KB, one segment
+rem more for its central directory), and /Y deflates KIN\BIG.DAT small,
+rem a 4 KB window, into MEM\M3.ZIP. A 288 KB one leaves about 48 KB:
+rem too little for KAGO's full packing of LZH (64 KB). KAGO says so and
+rem asks; N (TESTS\NO.TXT) stops it, and /Y packs KIN\BIG.DAT small
+rem into MEM\M1.LZH. For ZIP that is too little even for small, and Y
+rem (TESTS\YES.TXT) stores it, into MEM\M4.ZIP. A 304 KB one leaves
+rem about 32 KB, and Y stores KIN\BIG.DAT into MEM\M2.LZH. A 320 KB
 rem one leaves too little for FAR7.LZH's 64 KB window, and UNKAGO must
 rem refuse; with more memory it extracts. The results go to
 rem TESTS\MEMORY.TXT, read on the Mac, not compared, since they depend
-rem on the machine; M1.LZH and M2.LZH are compared with the model.
-ramdisk 288 /d>tests\memory.txt
+rem on the machine; the archives in MEM are compared with the model.
+ramdisk 272 /d>tests\memory.txt
 ramdisk>>tests\memory.txt
 cd tests\out
 del mem\m1.lzh
 del mem\m2.lzh
+del mem\m3.zip
+del mem\m4.zip
+..\..\build\kago /Y mem\m3.zip kin\big.dat>>..\memory.txt
+..\..\build\unkago /L mem\m3.zip>>..\memory.txt
+ramdisk 0 /d
+ramdisk 288 /d>>..\memory.txt
+ramdisk>>..\memory.txt
 ..\..\build\kago mem\m1.lzh kin\big.dat<..\no.txt>>..\memory.txt
 ..\..\build\kago /Y mem\m1.lzh kin\big.dat>>..\memory.txt
 ..\..\build\unkago /L mem\m1.lzh>>..\memory.txt
+..\..\build\kago mem\m4.zip kin\big.dat<..\yes.txt>>..\memory.txt
+..\..\build\unkago /L mem\m4.zip>>..\memory.txt
 ramdisk 0 /d
 ramdisk 304 /d>>..\memory.txt
 ramdisk>>..\memory.txt

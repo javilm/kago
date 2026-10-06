@@ -14,9 +14,10 @@
 ; and ? allowed, found with MSX-DOS2's _FFIRST and _FNEXT; each file
 ; found is added, its path as typed less the drive (word_dirs), its
 ; date, time and attributes, and its data, its CRC computed on the way:
-; CRC-16 for LZH, CRC-32 for ZIP. In an LZH archive the data is packed,
-; -lh5- (lh5w.as); it is stored instead in ZIP, with /0, when the file
-; is empty, and when packing does not make it smaller (pack_or_store).
+; CRC-16 for LZH, CRC-32 for ZIP. The data is packed (lh5w.as), -lh5-
+; in an LZH archive, deflate in a ZIP one; it is stored instead with /0,
+; when the file is empty, and when packing does not make it smaller
+; (pack_or_store).
 ; The header goes in front of the data, written again once the CRC and
 ; the sizes are known (lzhw.as makes LZH's, zipw.as ZIP's). A ZIP
 ; archive ends with its central directory, kept in mapper segments
@@ -37,7 +38,7 @@
 		include	seglist.inc	; seglist.as: lists in the mapper
 		include	lzh.inc		; lzh.as: reading the old archive
 		include	zip.inc		; zip.as: reading an old ZIP one
-		include	lh5w.inc	; lh5w.as: packing, -lh5-
+		include	lh5w.inc	; lh5w.as: packing, -lh5-, deflate
 
 		include	msxdos.inc	; BDOS, the function numbers, "system"
 		include	errors.inc	; .IOPT, .NOPAR, .FILEX, .NOFIL...
@@ -61,7 +62,8 @@ FORMAT_ZIP	equ	2
 MARK_ADDED	equ	1		; a path's marks in path_list: added
 MARK_OLD	equ	2		;   in this run; in the old archive
 FULL_SEGS	equ	4		; memory_check: segments for packing
-SMALL_SEGS	equ	3		;   at full strength, and small
+SMALL_SEGS	equ	3		;   at full strength, and small; ZIP
+					;   needs one more
 
 		cseg
 
@@ -590,9 +592,12 @@ add_entry.again:
 		ld	a,(packing)
 		or	a
 		jr	z,add_entry.crc
+		ld	a,(out_format)	; bit 1: deflate, for ZIP (2)
+		and	FORMAT_ZIP
+		ld	hl,pack_mode	; bit 0: small
+		or	(hl)
 		ld	hl,(fib+FIB_SIZE)	; packing stops at its size
 		ld	de,(fib+FIB_SIZE+2)
-		ld	a,(pack_mode)	; full strength, or small
 		call	lh5w_start	; CY: no memory for its tables
 		jp	c,no_memory
 add_entry.crc:
@@ -817,11 +822,11 @@ entry_details:
 		ld	(zipw_crc+2),hl
 		ret
 
-; pack_or_store - whether a file's data is packed: in an LZH archive,
-;   without /0, and not empty. Its method, -lh5- or -lh0-, for the
-;   header.
+; pack_or_store - whether a file's data is packed: without /0 (or too
+;   little memory), and not empty. Its LZH method, -lh5- or -lh0-, for
+;   the header; ZIP's comes from the sizes (zipw.as).
 ;
-; Input:	out_format, storing; lzhw_size
+; Input:	storing; lzhw_size
 ; Output:	packing: 1 to pack, 0 to store
 ;		lzhw_method
 ; Modifies:	AF
@@ -831,9 +836,8 @@ entry_details:
 ; Scratch:	none
 
 pack_or_store:
-		ld	a,(out_format)	; ZIP, or /0: stored
-		ld	hl,storing
-		or	(hl)
+		ld	a,(storing)	; /0: stored
+		or	a
 		ld	a,0
 		jr	nz,pack_or_store.set
 		ld	hl,(lzhw_size)	; an empty file too
@@ -862,9 +866,10 @@ pack_or_store.method:
 ;   Full strength takes FULL_SEGS segments: lh5w.as's three (the text,
 ;   prev, the tables) and the paths' list. With SMALL_SEGS, it packs
 ;   small: a 4 KB window, the text and prev in one segment. With fewer,
-;   it stores. Either way KAGO says so, with both figures, and asks; /Y
-;   answers yes without either line. N stops KAGO, nothing written. ZIP
-;   (stored, for now) and /0 need nothing.
+;   it stores. ZIP needs one more of each, for its central directory
+;   (zipw.as): pack_segs is what is left for packing. Either way KAGO
+;   says so, with both figures, and asks; /Y answers yes without either
+;   line. N stops KAGO, nothing written. /0 needs nothing.
 ;
 ; Input:	out_format, storing; /Y
 ; Output:	pack_mode: 0 full strength, 1 small
@@ -878,33 +883,41 @@ pack_or_store.method:
 ; Scratch:	none
 
 memory_check:
-		ld	a,(out_format)	; ZIP, or /0: nothing to check
-		ld	hl,storing
-		or	(hl)
+		ld	a,(storing)	; /0: nothing to check
+		or	a
 		ret	nz
 		call	mapfree		; HL = free segments
 		ld	a,h
 		or	a
 		ret	nz		; 256 or more
 		ld	a,l
+		ld	(free_segs),a
+		ld	a,(out_format)	; ZIP: one for its central
+		and	FORMAT_ZIP	;   directory
+		rrca
+		ld	(zip_seg),a
+		ld	c,a
+		ld	a,l
+		sub	c
+		jr	nc,memory_check.left
+		xor	a
+memory_check.left:
+		ld	(pack_segs),a	; what packing can have
 		cp	FULL_SEGS
 		ret	nc		; enough
-		ld	(free_segs),a
 		ld	c,"Y"		; /Y: yes, without a word
 		call	switch_given
 		jr	c,memory_check.yes
 		print	msg_full_needs	; both figures
+		ld	a,(zip_seg)
+		add	a,FULL_SEGS
+		call	print_kb
+		print	msg_but_only
 		ld	a,(free_segs)
-		ld	l,a
-		ld	h,0
-		add	hl,hl
-		add	hl,hl
-		add	hl,hl
-		add	hl,hl
-		call	print_number
+		call	print_kb
 		print	msg_kb_free
 		ld	de,msg_pack_less	; small, or stored
-		ld	a,(free_segs)
+		ld	a,(pack_segs)
 		cp	SMALL_SEGS
 		jr	nc,memory_check.ask
 		ld	de,msg_store_them
@@ -920,7 +933,7 @@ memory_check.ask:
 		print	msg_stopped	; N: nothing done
 		dos	_TERM0
 memory_check.yes:
-		ld	a,(free_segs)
+		ld	a,(pack_segs)
 		cp	SMALL_SEGS
 		jr	c,memory_check.store
 		ld	a,1		; small
@@ -930,6 +943,25 @@ memory_check.store:
 		ld	a,0FFh		; too little: stored, as with /0
 		ld	(storing),a
 		ret
+
+; print_kb - write how many KB some segments are: 16 each.
+;
+; Input:	A = the segments
+; Output:	written to standard output
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+; Scratch:	none
+
+print_kb:
+		ld	l,a
+		ld	h,0
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl
+		add	hl,hl		; and on into print_number
 
 ; print_number - write a number, without spaces before it.
 ;
@@ -2262,7 +2294,8 @@ fail_closed:
 ; msg_left		where the new archive is, when it could not take
 ;			the old one's place
 ; temp_ext		the temporary file's extension, and a 0
-; msg_full_needs, msg_kb_free, msg_pack_less, msg_store_them, msg_stopped
+; msg_full_needs, msg_but_only, msg_kb_free, msg_pack_less,
+; msg_store_them, msg_stopped
 ;			memory_check's warning, its questions, and N's
 ;			line
 ; msg_adding, msg_replacing, msg_ok, msg_skipping, msg_colon, msg_crlf,
@@ -2344,7 +2377,8 @@ msg_ok:		defb	" OK",CHR_CR,CHR_LF,"$"
 msg_skipping:	defb	"Skipping $"
 msg_colon:	defb	": $"
 msg_crlf:	defb	CHR_CR,CHR_LF,"$"
-msg_full_needs:	defb	"Full packing needs 64 KB of mapper memory, but only $"
+msg_full_needs:	defb	"Full packing needs $"
+msg_but_only:	defb	" KB of mapper memory, but only $"
 msg_kb_free:	defb	" KB are free.",CHR_CR,CHR_LF,"$"
 msg_pack_less:	defb	"Pack with less? (Y/N) $"
 msg_store_them:	defb	"Store the files? (Y/N) $"
@@ -2369,6 +2403,8 @@ end_mark:	defb	0
 ; storing		not 0 with /0, or too little memory to pack
 ; pack_mode, free_segs	memory_check: 0 full strength, 1 small; the
 ;			free segments it found
+; zip_seg, pack_segs	memory_check: 1 for ZIP's central directory, 0
+;			for LZH; the free segments less it
 ; num_buf		print_number: 5 digits and a "$"
 ; collecting		not 0 in /A's first walk
 ; old_drive, old_cluster, old_entry
@@ -2424,6 +2460,8 @@ appending:	defs	1
 storing:	defs	1
 pack_mode:	defs	1
 free_segs:	defs	1
+zip_seg:	defs	1
+pack_segs:	defs	1
 num_buf:	defs	6
 collecting:	defs	1
 old_drive:	defs	1

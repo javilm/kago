@@ -4,7 +4,7 @@ tests.bat extracts kin.lzh and edge.lzh with UNKAGO into tests\out\kin
 and tests\out\edge, which gives their files the dates and attributes
 below, then archives them with KAGO. What KAGO writes lands in
 tests\out\ too, and is compared on the Mac with what the Python model in
-the latest KAGO note (impl\026-kago-matches.md, for now) writes.
+the latest KAGO note (impl\029-kago-deflate.md, for now) writes.
 
 kin.lzh
     made for Tsuzura by the script in impl\019-kago-lzh.md, level 0.
@@ -25,8 +25,8 @@ kin.lzh
     sha256 f3e7311e0a58243b6a2f9da51d72eab40dfb8727fffef1cabe23f1958071cf86
 
 edge.lzh
-    made for Tsuzura by the script in impl\026-kago-matches.md, level 0,
-    every file stored (-lh0-). The -lh5- encoder's edge cases:
+    made for Tsuzura by the script in impl\029-kago-deflate.md, level 0,
+    every file stored (-lh0-). The encoders' edge cases:
       ONE.DAT      3000 bytes  2026-10-08 12:00:00  "A" only: matches
                                                     1 byte back
       HALF.DAT     8192 bytes  2026-10-08 12:00:02  bytes 0 to 127, 64
@@ -35,5 +35,8 @@ edge.lzh
                                                     times: 256 back
       NOISE.DAT    4096 bytes  2026-10-08 12:00:06  noise: no smaller
                                                     packed, so stored
-    sha256 355bac2ba4fa7ffac2745d8378437165fa6ac10df600b9bef09dbb75c0c1cb7d
+      FIXED.DAT      54 bytes  2026-10-08 12:00:08  a line 3 times:
+                                                    deflate's fixed
+                                                    codes
+    sha256 62f7162784bf56502e37ae472fda034cf45183d8e655a2330b9fd632c18f3524
 
