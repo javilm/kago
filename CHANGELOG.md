@@ -2,7 +2,7 @@
 
 All notable changes to KAGO and UNKAGO, newest first.
 
-## v1.0.0 - unreleased
+## v1.0.0
 
 The first release.
 
