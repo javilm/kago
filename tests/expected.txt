@@ -1,7 +1,7 @@
 TSUZURA TEST RUN
 === KAGO
 --- kago
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -22,7 +22,7 @@ Files may use * and ?.
 Skipping file.txt: File not found
 Nothing to add: archive.zip was not written.
 --- kago /Q /Y
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -43,7 +43,7 @@ Files may use * and ?.
 Which format? Name the archive .LZH, .LHA, .PMA or
 .ZIP, or use /F:LZH, /F:PMA or /F:ZIP.
 --- kago /?
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -61,17 +61,17 @@ Usage: KAGO [switches] archive files...
 Files may use * and ?.
 
 --- kago /v
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
 --- kago /V archive.lzh
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
 --- kago /V /?
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -102,7 +102,7 @@ Files may use * and ?.
 *** Invalid option
 === UNKAGO
 --- unkago
-UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -126,7 +126,7 @@ extracts everything under it.
 
 *** Missing parameter
 --- unkago /?
-UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -144,7 +144,7 @@ Members may use * and ?. Naming a directory
 extracts everything under it.
 
 --- unkago /V x.lzh
-UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -1158,30 +1158,30 @@ Extracting NOISE.DAT OK
 Extracting FIXED.DAT OK
 === BANNER
 --- kago /V
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
 --- kago /Q /V
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
 --- kago /X
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
 
 *** Invalid option
 --- kago ..\kb.lzh a.txt
-KAGO LZH/PMA/ZIP Compressor v1.0.0
+KAGO LZH/PMA/ZIP Compressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
 Adding A.TXT OK
 --- unkago /L kp1.pma
-UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
@@ -1195,13 +1195,13 @@ https://kago.tools
 ---------- ---------- ------                  ------------
       4907      70062        5 files
 --- unkago /O /D:bout kb.lzh
-UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 
 Extracting A.TXT OK
 --- unkago
-UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.1
 Copyright (C) 2026 Javier Lavandeira
 https://kago.tools
 

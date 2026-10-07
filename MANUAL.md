@@ -1,4 +1,4 @@
-# KAGO and UNKAGO 1.0.0 - user's manual
+# KAGO and UNKAGO 1.0.1 - user's manual
 
 `KAGO` creates archives and `UNKAGO` lists and extracts them. Both run under
 MSX-DOS2 (or Nextor) and handle three archive formats: ZIP, LZH (also called
@@ -415,5 +415,5 @@ UNKAGO TOOLS.COM                    a self-extracting PMA file
 
 ## 6. About
 
-KAGO and UNKAGO 1.0.0. Copyright 2026 Javier Lavandeira. Licensed under the
+KAGO and UNKAGO 1.0.1. Copyright 2026 Javier Lavandeira. Licensed under the
 Apache License, Version 2.0. <https://kago.tools>

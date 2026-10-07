@@ -8,7 +8,7 @@ all three formats. They are written entirely in Z80 assembler.
 
 Kago is Japanese for "basket": something woven that you pack things into.
 
-Version 1.0.0. Web site: https://kago.tools
+Version 1.0.1. Web site: https://kago.tools
 
 WHAT THEY DO
 ------------

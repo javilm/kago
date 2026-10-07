@@ -41,6 +41,8 @@ TOTAL_FIXED	equ	29		; the totals line before the count
 COPY_SIZE	equ	8192		; copy_buffer: what is read and
 					;   written at a time
 PATH_SEPARATOR	equ	5Ch		; "\", the yen sign on a Japanese MSX
+TARGET_MAX	equ	644		; target_line: a path (255), "\",
+					;   " as ", out_name's part (383), "\"
 
 		cseg
 
@@ -387,8 +389,6 @@ extract_archive:
 		or	a
 		jp	nz,report_stop
 		call	progress_init	; on the screen, not with /Q
-		ld	hl,extracting_line	; what the line starts with
-		ld	(progress_line),hl
 		call	crc_tables	; CRC-16's, or CRC-32's
 		ld	hl,0
 		ld	(members),hl
@@ -508,8 +508,11 @@ extract_member.method:
 extract_member.created:
 		ld	a,b
 		ld	(out_handle),a
-		print	msg_extracting
-		call	print_target
+		call	target_text	; Extracting, and the path: the
+		ld	hl,msg_extracting	;   line, with its percentage
+		ld	de,target_line
+		ld	bc,(target_size)
+		call	progress_show
 		ld	hl,(lzh_original)	; what the member unpacks to
 		ld	de,(lzh_original+2)
 		call	progress_start	; "   0%", on the screen
@@ -1739,22 +1742,6 @@ report_unmatched.skip:
 		jr	nz,report_unmatched.skip
 		djnz	report_unmatched.next
 		ret
-; extracting_line - the start of a member's line, "Extracting " and its
-;   path. progress.as calls it through progress_line, to redraw the
-;   line.
-;
-; Input:	lzh.as's variables; out_member, names_changed
-; Output:	they are printed
-; Modifies:	AF
-;		BC
-;		DE
-;		HL
-; Scratch:	none
-
-extracting_line:
-		print	msg_extracting
-		jp	print_target
-
 ; check_memory - stop, saying why, unless the window and the tables fit
 ;   in the free mapper memory, as R7 asks.
 ;
@@ -1958,10 +1945,11 @@ print_path:
 
 ; print_target - the member's path, and where it goes when that is
 ;   not the same: " as " and out_name's part, when a part of the path
-;   had to be shortened.
+;   had to be shortened. target_text, its first half, puts it in
+;   target_line, for progress_show too.
 ;
 ; Input:	lzh.as's variables; out_member, names_changed (out_path)
-; Output:	the path is printed
+; Output:	the path is printed; target_line, target_size
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -1969,17 +1957,52 @@ print_path:
 ; Scratch:	none
 
 print_target:
-		call	print_path
+		call	target_text
+		printl	target_line,(target_size)
+		ret
+target_text:
+		ld	hl,(lzh_name_length)	; the path
+		ld	b,h
+		ld	c,l
+		ld	hl,lzh_name
+		ld	de,target_line
+		ld	a,b
+		or	c
+		jr	z,target_text.dir
+		ldir
+target_text.dir:
+		call	target_slash	; a directory's ends in "\"
 		ld	a,(names_changed)
 		or	a
-		ret	z
-		print	msg_as
-		ld	de,(out_member)
-		call	print_zero
-		ld	a,(lzh_dir)	; a directory's ends in "\"
+		jr	z,target_text.done
+		ld	hl,msg_as	; " as ", and out_name's part
+		ld	bc,4
+		ldir
+		ld	hl,(out_member)
+target_text.part:
+		ld	a,(hl)
+		or	a
+		jr	z,target_text.parted
+		ld	(de),a
+		inc	hl
+		inc	de
+		jr	target_text.part
+target_text.parted:
+		call	target_slash
+target_text.done:
+		ex	de,hl		; its length
+		ld	de,target_line
+		or	a
+		sbc	hl,de
+		ld	(target_size),hl
+		ret
+target_slash:
+		ld	a,(lzh_dir)
 		or	a
 		ret	z
-		print	msg_separator
+		ld	a,PATH_SEPARATOR
+		ld	(de),a
+		inc	de
 		ret
 
 ; crc_tables, crc_start, crc_add, crc_check - the member's CRC, by
@@ -2562,7 +2585,7 @@ switch_letters:	defb	"DLOQV?",0
 msg_need_dos2:	defb	"ERROR: UNKAGO needs MSX-DOS2 or Nextor."
 		defb	CHR_CR,CHR_LF,"$"
 msg_banner:
-		defb	"UNKAGO LZH/PMA/ZIP Decompressor v1.0.0"
+		defb	"UNKAGO LZH/PMA/ZIP Decompressor v1.0.1"
 		defb	CHR_CR,CHR_LF
 		defb	"Copyright (C) 2026 Javier Lavandeira"
 		defb	CHR_CR,CHR_LF
@@ -2682,6 +2705,10 @@ msg_no_mapper:	defb	"UNKAGO needs MSX-DOS2's mapper support."
 ; out_name		its name, zero-terminated, with dest_path: 384
 ;			bytes, in the buffers segment
 ; out_member		where the member's path starts in out_name
+; target_line, target_size
+;			target_text: the path, and where it goes, as
+;			Extracting's line shows them, in the buffers
+;			segment; and its length
 ; remaining		its data still to copy, 4 bytes
 ; chunk			the bytes in copy_buffer this time round
 ; dest_path		/D:'s path, zero-terminated; empty without /D
@@ -2748,6 +2775,7 @@ dirs_end:	defs	2
 dirs_shared:	defs	2
 last_length:	defs	1
 out_member:	defs	2
+target_size:	defs	2
 dest_letter:	defs	1
 new_dirs:	defs	2
 cluster_shift:	defs	1
@@ -2772,6 +2800,7 @@ match_given:	defs	2
 		dseg	buffers
 copy_buffer:	defs	COPY_SIZE
 out_name:	defs	384
+target_line:	defs	TARGET_MAX
 last_dir:	defs	255
 
 		end	main

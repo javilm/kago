@@ -1,4 +1,4 @@
-KAGO AND UNKAGO 1.0.0 - USER'S MANUAL
+KAGO AND UNKAGO 1.0.1 - USER'S MANUAL
 =====================================
 
 KAGO creates archives and UNKAGO lists and extracts them. Both run under
@@ -406,6 +406,6 @@ own, with its usual messages.
 6. ABOUT
 --------
 
-KAGO and UNKAGO 1.0.0. Copyright 2026 Javier Lavandeira. Licensed under the
+KAGO and UNKAGO 1.0.1. Copyright 2026 Javier Lavandeira. Licensed under the
 Apache License, Version 2.0. https://kago.tools
 

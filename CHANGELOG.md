@@ -2,6 +2,18 @@
 
 All notable changes to KAGO and UNKAGO, newest first.
 
+## v1.0.1
+
+Fixes for the progress line, seen only on the screen:
+
+- The percentage no longer garbles the screen when a file's line is
+  longer than the screen is wide (issue #1). While the percentage is
+  shown, such a line is shortened to fit one row, keeping the end of the
+  path so the file's name stays in view; at the end the whole line is
+  printed with `OK`. The cut never splits a two-byte (kanji) character.
+- KAGO no longer leaves a stale percentage after `OK` when it stores a
+  file that it could not pack smaller (issue #2).
+
 ## v1.0.0
 
 The first release.

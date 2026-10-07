@@ -152,8 +152,6 @@ main.files:
 		call	memory_check	; room for packing, or KAGO asks
 		call	create_archive	; returns only if it was
 		call	progress_init	; on the screen, not with /Q
-		ld	hl,adding_line	; what the line starts with
-		ld	(progress_line),hl
 		call	crc_tables	; CRC-16's table, or CRC-32's
 		ld	hl,0
 		ld	(added),hl
@@ -644,7 +642,10 @@ add_entry.path:
 		call	archive_seek
 		ld	(data_at),hl
 		ld	(data_at+2),de
-		call	adding_line	; Adding, or Replacing, and the path
+		ld	hl,(line_word)	; Adding, or Replacing, and the
+		ld	de,lzhw_path	;   path: the line, with its
+		ld	bc,(lzhw_length)	;   percentage
+		call	progress_show
 add_entry.again:
 		ld	hl,(fib+FIB_SIZE)
 		ld	de,(fib+FIB_SIZE+2)
@@ -2259,8 +2260,8 @@ entry_path.done:
 		ret
 
 ; adding_line - the start of a member's line, "Adding " or "Replacing "
-;   (line_word, from path_check), and its path. progress.as calls it
-;   through progress_line, to redraw the line.
+;   (line_word, from path_check), and its path: a directory's line. A
+;   file's goes to progress_show instead, with its percentage.
 ;
 ;   print_member, its second half, is the path alone: printl, since it
 ;   may hold a "$".
@@ -2528,7 +2529,7 @@ switch_letters:	defb	"AFYQV0?",0
 msg_need_dos2:	defb	"ERROR: KAGO needs MSX-DOS2 or Nextor."
 		defb	CHR_CR,CHR_LF,"$"
 msg_banner:
-		defb	"KAGO LZH/PMA/ZIP Compressor v1.0.0"
+		defb	"KAGO LZH/PMA/ZIP Compressor v1.0.1"
 		defb	CHR_CR,CHR_LF
 		defb	"Copyright (C) 2026 Javier Lavandeira"
 		defb	CHR_CR,CHR_LF
