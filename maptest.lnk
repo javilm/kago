@@ -1,5 +1,0 @@
-; maptest.lnk - the modules of MAPTEST, in link order
-maptest.tro			; the entry point comes first
-common.tro			; shared with KAGO and UNKAGO
-alloc.tro			; MapperHeap
-

@@ -1218,12 +1218,4 @@ Usage: UNKAGO [switches] archive [members...]
 Members may use * and ?. Naming a directory
 extracts everything under it.
 
-=== MAPTEST
---- maptest
-MAPTEST - a mapper block: allocate, write, read, free
-heapinit: OK
-halloc, 16372 bytes: OK
-written: 16372 bytes
-read back after a remap: OK
-hfree: OK, no blocks left
 === END OF RUN

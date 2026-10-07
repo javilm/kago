@@ -10,6 +10,6 @@ pm1.tro				; -pm1-
 names.tro			; the MSX-DOS names
 zip.tro				; reading ZIP archives
 progress.tro			; the progress line, shared with KAGO
-common.tro			; shared with KAGO and MAPTEST
+common.tro			; shared with KAGO
 alloc.tro			; MapperHeap
 

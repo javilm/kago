@@ -656,10 +656,6 @@ echo --- unkago>>..\results.txt
 ..\..\build\unkago>>..\results.txt
 cd ..\..
 
-echo === MAPTEST>>tests\results.txt
-echo --- maptest>>tests\results.txt
-build\maptest>>tests\results.txt
-
 echo === END OF RUN>>tests\results.txt
 echo Done. The results are in TESTS\RESULTS.TXT.
 

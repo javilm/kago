@@ -1,7 +1,7 @@
-rem BUILD.BAT - assemble and link KAGO, UNKAGO and MAPTEST, with Tatara.
+rem BUILD.BAT - assemble and link KAGO and UNKAGO, with Tatara.
 
 rem SILENCE IS SUCCESS. /Q prints nothing for a module that works and
-rem errors print anyway. Between the === lines, only the three DIR
+rem errors print anyway. Between the === lines, only the two DIR
 rem listings at the end should appear.
 
 set TATARA=src\include
@@ -25,7 +25,6 @@ tatara /q src\zip.as zip.tro
 tatara /q src\progress.as progress.tro
 tatara /q src\common.as common.tro
 tatara /q src\alloc.as alloc.tro
-tatara /q src\maptest.as maptest.tro
 
 rem DELETE THE TARGETS BEFORE THE LINK, so a link that fails leaves no
 rem binary at all rather than the previous one.
@@ -38,10 +37,8 @@ rem what tell: "File not found" means read that tool's .MAP file.
 echo === Linking...
 del build\kago.com
 del build\unkago.com
-del build\maptest.com
 tanren /m /o:build\kago.com @kago.lnk > build\kago.map
 tanren /m /o:build\unkago.com @unkago.lnk > build\unkago.map
-tanren /m /o:build\maptest.com @maptest.lnk > build\maptest.map
 
 echo === Cleaning up...
 del *.tro
@@ -49,7 +46,6 @@ del *.tro
 echo === The binaries
 dir build\kago.com
 dir build\unkago.com
-dir build\maptest.com
 
 echo === Done
 

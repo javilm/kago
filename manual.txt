@@ -1,0 +1,411 @@
+KAGO AND UNKAGO 1.0.0 - USER'S MANUAL
+=====================================
+
+KAGO creates archives and UNKAGO lists and extracts them. Both run under
+MSX-DOS2 (or Nextor) and handle three archive formats: ZIP, LZH (also called
+LHA) and PMA. This manual describes everything they do. For installation and a
+quick tour, see README.TXT.
+
+1. BEFORE YOU START
+-------------------
+
+Requirements. MSX-DOS2 or Nextor, and the memory mapper that MSX-DOS2 always
+has. Under MSX-DOS1 both tools print "needs MSX-DOS2 or Nextor" and stop.
+
+Memory. The tools are small programs, but packing and unpacking need working
+memory, which they take from the mapper: as much as is free when they run,
+never an assumed amount. A RAM disk, or a resident program, leaves less.
+Sections 2.6 and 3.6 say how much each tool wants and what happens with less.
+
+The command line. Both tools are run from the MSX-DOS2 prompt or from a batch
+file:
+
+  KAGO [switches] archive files...
+  UNKAGO [switches] archive [members...]
+
+- A switch is a word that starts with /, in upper or lower case: /L and /l are
+  the same. Switches may go anywhere on the line.
+- A switch the tool does not know stops it with MSX-DOS2's own message,
+  *** Invalid option, before it does anything.
+- /?, or nothing at all after the tool's name, prints the usage. /V prints the
+  banner (name, version, copyright, web address) and nothing else.
+- Without /Q, both tools print their banner first, then a blank line, then
+  whatever they have to say. /Q (quiet) leaves out the banner and the progress
+  percentage.
+
+Formats and methods.
+
+Format  Extensions               KAGO writes            UNKAGO reads
+------  -----------------------  ---------------------  -----------------------
+ZIP     .ZIP                     deflate; stored        deflate; stored
+LZH     .LZH, .LHA               -lh5-; -lh0- (stored)  -lh0-, -lh1-, -lh4-,
+                                                        -lh5-, -lh6-, -lh7-
+PMA     .PMA (.COM when          -pm2-; -pm0- (stored)  -pm0-, -pm1-, -pm2-
+        self-extracting)
+
+LZH and LHA are the same format; .LHA is the name the Amiga used. PMA is the
+format of PMarc and PMARC2 on the MSX, read by PMEXT.
+
+2. KAGO, THE COMPRESSOR
+-----------------------
+
+  KAGO [switches] archive files...
+
+KAGO creates archive and puts in it the files and directories named after it.
+
+Switch  What it does
+------  -----------------------------------------------------------------------
+/A      add to the archive: new files go in, files with the same path replace
+        the old ones
+/F:fmt  the format: /F:ZIP, /F:LZH or /F:PMA. Without it, the archive's
+        extension decides
+/0      store the files, without packing them
+/Y      proceed without asking when memory is short
+/Q      quiet: no banner, no progress
+/V      the banner, and nothing else
+/?      the usage
+
+2.1 The format
+~~~~~~~~~~~~~~
+
+/F:ZIP, /F:LZH or /F:PMA chooses the format, whatever the archive is called.
+Without /F:, the extension does: .ZIP; .LZH or .LHA; .PMA. With neither, KAGO
+stops and says how to choose:
+
+  Which format? Name the archive .LZH, .LHA, .PMA or
+  .ZIP, or use /F:LZH, /F:PMA or /F:ZIP.
+
+2.2 Naming the files
+~~~~~~~~~~~~~~~~~~~~
+
+Each word after the archive's name is a file or a directory, and may use * and
+? as MSX-DOS2 does: *.*, GAME?.ROM, B:\DOCS\*.TXT.
+
+- Hidden and system files are found and added like the others.
+- A directory is added whole: an entry for the directory itself, then
+  everything in it, at every depth. Naming PROJECT adds the whole PROJECT tree;
+  *.* adds the files and the subdirectories of the current directory, with
+  everything in them.
+- Paths are stored as you typed them, less the drive. KAGO A.ZIP WORK\*.TXT
+  stores WORK\NOTES.TXT; B:\WORK\*.TXT stores the same: the drive, and a
+  leading \, are left out, so the archive extracts anywhere. Names are stored
+  in upper case, as MSX-DOS2 keeps them.
+- .. is refused in a path (..\OTHER\*.*): it would make the file extract
+  outside the directory it is extracted into. Change to the parent directory
+  and name it from there instead.
+- The archive itself is never added, even if a wildcard matches it, and a file
+  named twice is added once (the second time: "added already").
+- A word that matches nothing is reported ("Skipping X: File not found"), and
+  the others still go in. If nothing at all was added, no archive is left:
+  "Nothing to add: X was not written."
+
+Each file gets one line:
+
+  Adding WORK\NOTES.TXT OK
+
+On the screen, a percentage shows how far through each file KAGO is.
+
+2.3 Packing
+~~~~~~~~~~~
+
+Each file is packed with the format's method (deflate, -lh5- or -pm2-). A file
+that would not get smaller, such as one that is packed already (an archive, a
+compressed image), is stored instead, so no file ever grows by more than its
+header. Empty files are stored.
+
+With /0, every file is stored without trying to pack it. It is much faster, and
+the right choice for files that are packed already.
+
+Each file's date and time, and its read-only, hidden and system attributes, are
+kept in the archive, and UNKAGO gives them back.
+
+How well it packs, compared with the tools on modern computers: -lh5- within
+half a per cent of lha, deflate about 2% larger than zip -6. -pm2- packs most
+files a little better than -lh5-, but large files that repeat a lot somewhat
+worse, because PMA's format starts new code tables every 4 KB.
+
+2.4 An archive that exists
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+KAGO never overwrites an archive. If the archive is there already, it stops
+without touching it:
+
+  GAMES.ZIP already exists.
+
+Delete it first to make a new one, or use /A to add to it.
+
+2.5 Adding to an archive (/A)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With /A, the files named are added to an archive that is there, in any of the
+three formats. A file whose path is already in the archive replaces the old
+member ("Replacing" instead of "Adding"); the other members are kept as they
+were, byte for byte. If the archive is not there, it is created.
+
+KAGO writes the new archive beside the old one, as a temporary file with the
+same name and the extension .$$$; then it deletes the old one and renames the
+new one into its place. So the disk needs room for both while it works, and if
+anything goes wrong, the old archive is left as it was. If the rename fails,
+KAGO says where the new archive is.
+
+An archive that KAGO cannot read as the format asked for is refused, and left
+as it was.
+
+2.6 Memory
+~~~~~~~~~~
+
+For full-strength packing, KAGO needs this much free mapper memory:
+
+Format    Full packing  Packing with a smaller window
+--------  ------------  -----------------------------
+LZH, PMA  64 KB         48 KB
+ZIP       80 KB         64 KB
+
+With less than full, it says so and asks before writing anything:
+
+  Full packing needs 64 KB of mapper memory, but only 48 KB are free.
+  Pack with less? (Y/N)
+
+Packing with less searches a 4 KB window instead of 8 KB: the archive is a
+little larger, and just as valid. With less than that, it offers to store the
+files instead ("Store the files? (Y/N)"). N stops, with nothing written.
+
+/Y answers yes without asking: KAGO packs as well as the memory allows, or
+stores. Use it in batch files.
+
+2.7 PMA archives
+~~~~~~~~~~~~~~~~
+
+PMA archives are written as PMARC2 writes them, and PMEXT extracts them. The
+format sets two limits:
+
+- No directories. A directory that a wildcard finds is skipped, with a line
+  ("Skipping SUB: PMA archives have no directories."). A directory named on the
+  command line, or a path with a directory in it (WORK\A.TXT), stops KAGO
+  before it writes anything. To pack a directory's files into a PMA archive,
+  change to that directory first.
+- No empty files. PMEXT cannot extract an empty member, so they are skipped,
+  with a line, as PMARC2 skips them.
+
+PMEXT pads each file it extracts with 1Ah bytes to a multiple of 128 bytes, as
+CP/M did. UNKAGO gives the exact size back.
+
+2.8 Dates in LZH archives
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+LZH archives record the time in UTC, and the MSX does not know its time zone,
+so KAGO stores the MSX's time as it is. UNKAGO gives the same time back; lha on
+a modern computer shows it shifted by your time zone. ZIP and PMA archives
+store the local time, and have no such shift.
+
+3. UNKAGO, THE DECOMPRESSOR
+---------------------------
+
+  UNKAGO [switches] archive [members...]
+
+UNKAGO extracts the archive's members into the current directory, or lists
+them. It recognises the format by itself, whatever the archive is called.
+
+Switch   What it does
+-------  -------------------------------------
+/L       list the archive, extract nothing
+/D:path  extract into path, created if missing
+/O       overwrite files that already exist
+/Q       quiet: no banner, no progress
+/V       the banner, and nothing else
+/?       the usage
+
+3.1 Listing (/L)
+~~~~~~~~~~~~~~~~
+
+  A>UNKAGO /L PROJECT.LZH
+      Packed   Original Method Date             Name
+  ---------- ---------- ------ ---------------- ------------
+           0          0 -lhd-  2026-10-07 10:00 PROJECT\
+        4310      11873 -lh5-  2026-10-07 09:58 PROJECT\MAIN.AS
+         212        388 -lh5-  2026-10-07 09:12 PROJECT\README.TXT
+  ---------- ---------- ------                  ------------
+        4522      12261        3 files
+
+One line per member: its packed size, its original size, its method, its date
+and time, and its path; a directory ends in \. The last line gives the totals.
+ZIP's methods show as deflat and stored.
+
+The method tells you how much memory extracting will need (section 3.6), and
+the total original size, how much disk space.
+
+3.2 Extracting
+~~~~~~~~~~~~~~
+
+Without /L, every member is extracted, each with one line:
+
+  Extracting PROJECT\MAIN.AS OK
+
+- Directories in the members' paths are created as they are needed, and
+  directory members are created even when empty.
+- Dates, times and attributes (read-only, hidden, system) are restored.
+- Each file's CRC is checked. A file whose CRC does not match is deleted, and
+  its line ends in CRC error.
+- An existing file is never replaced, unless /O is given; it is skipped instead
+  ("Skipping X: it already exists"). With /O it is overwritten.
+- A member UNKAGO cannot extract (a method it does not have, or an encrypted
+  ZIP member) is skipped with a line, and the others are extracted.
+
+3.3 Some members only
+~~~~~~~~~~~~~~~~~~~~~
+
+Names after the archive's choose which members to list or extract. They are
+matched against each member's whole path, in either case:
+
+- * matches any run of characters, dots and \ included, and ? any one
+  character. So *.TXT matches every .TXT file at any depth, * alone matches
+  everything, and *.* only the names with a dot.
+- A directory's name chooses everything under it: UNKAGO A.ZIP PROJECT\SRC
+  extracts the directory PROJECT\SRC and all it holds.
+- A name that matches nothing is reported ("Not in the archive: X").
+
+  A>UNKAGO GAMES.LZH *.ROM README.TXT
+
+Only the chosen members count towards the checks of section 3.5.
+
+3.4 Another destination (/D)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/D:path extracts into path instead of the current directory:
+
+/D:B:          the current directory of drive B:
+/D:B:\GAMES    the directory \GAMES on drive B:
+/D:\TEMP       \TEMP on the current drive
+/D:TEMP\FILES  TEMP\FILES under the current directory
+
+A destination that does not exist is created, with any directories above it,
+once the checks of section 3.5 have passed.
+
+3.5 Disk space
+~~~~~~~~~~~~~~
+
+Before writing anything, UNKAGO adds up the space the members will take, in
+whole clusters, the new directories included, and compares it with the free
+space on the destination drive. If it does not fit, it says how much is needed
+and how much is free, and writes nothing:
+
+  Extracting this archive would take 412 KB on disk, but only 287 KB are free
+  on A:.
+
+Extract some members only (section 3.3), or onto another disk (section 3.4).
+
+If the disk fills up anyway (when files are overwritten, or a floppy's root
+directory runs out of entries), UNKAGO deletes the file it was writing, stops,
+and says which members it did not extract. The files extracted until then stay.
+
+3.6 Memory
+~~~~~~~~~~
+
+Each method needs this much free mapper memory to extract:
+
+Method                                          Memory
+----------------------------------------------  ------
+stored (-lh0-, -pm0-, ZIP stored), directories  none
+-lh1-, -lh4-, -lh5-, -pm2-                      32 KB
+-lh6-, -pm1-, deflate                           48 KB
+-lh7-                                           80 KB
+
+UNKAGO works out the most that the chosen members need, and if that is not
+free, it says so before writing anything:
+
+  Extracting this archive needs 80 KB of mapper memory, but only 48 KB are
+  free.
+
+Free some memory (a smaller RAM disk, fewer resident programs), or extract the
+members that need less.
+
+3.7 Long filenames
+~~~~~~~~~~~~~~~~~~
+
+Archives made on modern computers often hold names that do not fit MSX-DOS's
+8.3 form. UNKAGO shortens them the way Windows shortens long names for MS-DOS,
+and says so:
+
+  Extracting longfilename.txt as LONGFI~1.TXT OK
+  Extracting my file.c as MYFILE~1.C OK
+  Extracting Long Directory Name\ as LONGDI~1\ OK
+
+The name is cut to six characters and given a ~ and a number, and the extension
+is cut to three; spaces and extra dots are left out, and characters that
+MSX-DOS does not allow become _. The numbers go up until each name is different
+from the others in the same directory of the archive, so the same archive
+always gives the same names. A name that fits already is used as it is, in
+upper case.
+
+Japanese names in Shift-JIS are kept as they are when they fit.
+
+3.8 What UNKAGO reads
+~~~~~~~~~~~~~~~~~~~~~
+
+- LZH archives with level 0, 1 and 2 headers, made by LHarc, LHA, lha on modern
+  computers, and KAGO. Level 3 headers are refused.
+- PMA archives made by PMarc (-pm1-) and PMARC2 (-pm2-), and self-extracting
+  PMA files (.COM): UNKAGO lists and extracts them without running them,
+  leaving out the extractor they carry.
+- ZIP archives with stored and deflate members, those whose sizes come after
+  the data included. Not read: ZIP64 (over 4 GB), split archives, and encrypted
+  members.
+
+A file that is none of these is refused: "Not an LZH or ZIP archive."
+
+4. MESSAGES
+-----------
+
+Messages about a shortage always give the amount needed and the amount
+available. Amounts are in KB, or in MB from 1024 KB.
+
+Message                                 Meaning
+--------------------------------------  ---------------------------------------
+X already exists.                       KAGO: the archive is there; delete it
+                                        or use /A
+Nothing to add: X was not written.      KAGO: no file was found
+Skipping X: File not found              KAGO: a word matched nothing
+X: a path with .. cannot be stored      KAGO: see section 2.2
+X: PMA archives have no directories.    KAGO: see section 2.7
+Full packing needs ...                  KAGO: see section 2.6
+Skipping X: it already exists           UNKAGO: use /O to overwrite
+Extracting X CRC error                  UNKAGO: the member is damaged; the file
+                                        was deleted
+Not in the archive: X                   UNKAGO: a name matched no member
+Extracting this archive would take ...  UNKAGO: see section 3.5
+Extracting this archive needs ...       UNKAGO: see section 3.6
+*** Invalid option                      a switch the tool does not take
+*** Missing parameter                   KAGO with an archive but no files;
+                                        UNKAGO /L without an archive, or /D
+                                        without a path
+
+Other errors from the disk (Disk full, Write protected disk...) are MSX-DOS2's
+own, with its usual messages.
+
+5. EXAMPLES
+-----------
+
+  KAGO GAMES.ZIP *.*                  everything here, into a ZIP archive
+  KAGO DOCS.LZH *.TXT                 the text files, into an LZH archive
+  KAGO TOOLS.PMA EDIT.COM EDIT.DOC    two files, into a PMA archive
+  KAGO PROJECT.ZIP PROJECT            a whole directory tree
+  KAGO WORK.LZH B:\WORK\*.*           a tree from another drive
+  KAGO /A GAMES.ZIP README.TXT        add or replace one file
+  KAGO /F:LZH BACKUP.DAT *.*          LZH, whatever the name
+  KAGO /0 PICS.ZIP *.SC8              store, don't pack
+  KAGO /Y /Q BACKUP.LZH A:\WORK       for a batch file
+
+  UNKAGO /L GAMES.ZIP                 list
+  UNKAGO GAMES.ZIP                    extract here
+  UNKAGO /D:B:\GAMES GAMES.ZIP        extract into B:\GAMES
+  UNKAGO /O GAMES.ZIP                 extract, replacing existing files
+  UNKAGO DOCS.LZH *.DOC               only the .DOC files
+  UNKAGO PROJECT.ZIP PROJECT\SRC      only one directory of the tree
+  UNKAGO TOOLS.COM                    a self-extracting PMA file
+
+6. ABOUT
+--------
+
+KAGO and UNKAGO 1.0.0. Copyright 2026 Javier Lavandeira. Licensed under the
+Apache License, Version 2.0. https://kago.tools
+
