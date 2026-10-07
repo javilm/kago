@@ -501,6 +501,36 @@ dir /h tests\out\kout\kin\sub>>tests\dates.txt
 dir /h tests\out\zout\kin>>tests\dates.txt
 dir /h tests\out\zout\kin\sub>>tests\dates.txt
 
+rem KAGO PMA runs in TESTS\OUT\KIN, KIN's files as KAGO ARCHIVING
+rem left them: they go into KP1.PMA, stored (-pm0-), but EMPTY.DAT,
+rem as PMEXT cannot read an empty member, and SUB, as PMA has no
+rem directories; UNKAGO lists it and extracts it into
+rem PMOUT, for the Mac to compare. Then the refusals, a directory
+rem named and a path with one, nothing written; and /A replacing
+rem A.TXT in KP1.PMA, listed again. PMOUT goes into TESTS\DATES.TXT.
+echo === KAGO PMA>>tests\results.txt
+attrib -r tests\out\pmout\ro.txt
+del tests\out\pmout\empty.dat
+cd tests\out\kin
+del ..\kp1.pma
+del ..\kp2.pma
+echo --- kago ..\kp1.pma *.*>>..\..\results.txt
+..\..\..\build\kago ..\kp1.pma *.*>>..\..\results.txt
+echo --- unkago /L ..\kp1.pma>>..\..\results.txt
+..\..\..\build\unkago /L ..\kp1.pma>>..\..\results.txt
+echo --- unkago /O /D:..\pmout ..\kp1.pma>>..\..\results.txt
+..\..\..\build\unkago /O /D:..\pmout ..\kp1.pma>>..\..\results.txt
+echo --- kago ..\kp2.pma a.txt sub>>..\..\results.txt
+..\..\..\build\kago ..\kp2.pma a.txt sub>>..\..\results.txt
+echo --- kago ..\kp2.pma sub\in.txt>>..\..\results.txt
+..\..\..\build\kago ..\kp2.pma sub\in.txt>>..\..\results.txt
+echo --- kago /A ..\kp1.pma a.txt>>..\..\results.txt
+..\..\..\build\kago /A ..\kp1.pma a.txt>>..\..\results.txt
+echo --- unkago /L ..\kp1.pma>>..\..\results.txt
+..\..\..\build\unkago /L ..\kp1.pma>>..\..\results.txt
+cd ..\..\..
+dir /h tests\out\pmout>>tests\dates.txt
+
 rem KAGO PACKING runs in TESTS\OUT too. KIN's tree goes into K7.LZH,
 rem packed: -lh5-, but for the files that do not get smaller, which are
 rem stored. UNKAGO lists it, then extracts it into POUT for the Mac to

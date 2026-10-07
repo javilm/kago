@@ -812,7 +812,8 @@ Adding KIN\SUB\DEEP\ OK
 ---------- ---------- ------                  ------------
         13         13        3 files
 --- kago k2.pma kin\a.txt
-Writing PMA archives is not supported yet.
+kin\a.txt: PMA archives have no directories.
+Nothing written.
 --- kago k2.txt kin\a.txt
 Which format? Name the archive .LZH, .LHA, .PMA or
 .ZIP, or use /F:LZH, /F:PMA or /F:ZIP.
@@ -986,6 +987,49 @@ Replacing KOUT\KIN\SUB\DEEP\ OK
          0          0 -lhd-  2026-10-07 10:00 KOUT\KIN\SUB\DEEP\
 ---------- ---------- ------                  ------------
       3484      70075        9 files
+=== KAGO PMA
+--- kago ..\kp1.pma *.*
+Adding A.TXT OK
+Adding BIG.DAT OK
+Skipping EMPTY.DAT: PMA archives cannot hold an empty file.
+Adding RO.TXT OK
+Adding HID.TXT OK
+Adding A$B.TXT OK
+Skipping SUB: PMA archives have no directories.
+--- unkago /L ..\kp1.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        18         18 -pm0-  2001-02-03 04:05 A.TXT
+     70000      70000 -pm0-  1980-01-01 00:00 BIG.DAT
+        12         12 -pm0-  2100-03-01 00:00 RO.TXT
+         9          9 -pm0-  2106-02-07 06:28 HID.TXT
+        23         23 -pm0-  2099-12-31 23:59 A$B.TXT
+---------- ---------- ------                  ------------
+     70062      70062        5 files
+--- unkago /O /D:..\pmout ..\kp1.pma
+Extracting A.TXT OK
+Extracting BIG.DAT OK
+Extracting RO.TXT OK
+Extracting HID.TXT OK
+Extracting A$B.TXT OK
+--- kago ..\kp2.pma a.txt sub
+sub: PMA archives have no directories.
+Nothing written.
+--- kago ..\kp2.pma sub\in.txt
+sub\in.txt: PMA archives have no directories.
+Nothing written.
+--- kago /A ..\kp1.pma a.txt
+Replacing A.TXT OK
+--- unkago /L ..\kp1.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+     70000      70000 -pm0-  1980-01-01 00:00 BIG.DAT
+        12         12 -pm0-  2100-03-01 00:00 RO.TXT
+         9          9 -pm0-  2106-02-07 06:28 HID.TXT
+        23         23 -pm0-  2099-12-31 23:59 A$B.TXT
+        18         18 -pm0-  2001-02-03 04:05 A.TXT
+---------- ---------- ------                  ------------
+     70062      70062        5 files
 === KAGO PACKING
 --- kago k7.lzh kin\*.*
 Adding KIN\A.TXT OK

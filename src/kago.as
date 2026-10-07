@@ -1,10 +1,16 @@
-; kago.as - KAGO, the compressor. It writes LZH and ZIP archives of the
-; files and directory trees named on the command line, and with /A adds
-; to an LZH or ZIP archive that is there.
+; kago.as - KAGO, the compressor. It writes LZH, PMA and ZIP archives of
+; the files and directory trees named on the command line, and with /A
+; adds to an LZH, PMA or ZIP archive that is there.
 ;
 ; It checks for MSX-DOS2 and the command line, and chooses the format:
-; /F: names it, or the archive's extension does. LZH and ZIP are
-; written; PMA says so. The archive is created new: one that exists
+; /F: names it, or the archive's extension does. A PMA archive is
+; written as an LZH one, with level 0 headers (lzhw_level0), its
+; members stored as -pm0- for now, and its end padded with 1Ah to a
+; whole 128 bytes (pma_pad). An empty file is skipped, as PMEXT
+; cannot read one (pma_empty). PMA has no directories, so a directory or
+; a path with one in it refuses the run before anything is written
+; (pma_refuse), but for a directory a wildcard finds, which is skipped
+; (pma_directory). The archive is created new: one that exists
 ; already is refused, unless /A asks to add to it (open_old). Then the
 ; archive is made again as a temporary file beside it: the old members
 ; are copied first, byte for byte, but for those a file named replaces
@@ -77,11 +83,14 @@ SMALL_SEGS	equ	3		;   at full strength, and small; ZIP
 ;   format (archive_format). With no archive named, the usage; with no
 ;   file named after it, .NOPAR (*** Missing parameter). The words after
 ;   it are added one by one (add_words). An LZH archive ends with a 0
-;   byte; a ZIP archive with its central directory and end record.
+;   byte; a PMA archive too, then 1Ah to a whole 128 bytes; a ZIP
+;   archive with its central directory and end record.
 ;
 ;   With /A and an archive there, the words are walked twice: first only
 ;   for their paths (collecting), so that copy_old knows which old
-;   members to leave out; then to add them. At the end the old archive
+;   members to leave out; then to add them. PMA walks them twice too,
+;   so that a directory is refused before anything is written. At the
+;   end the old archive
 ;   is deleted, and the new one, written as temp_name, renamed into its
 ;   place; if either fails, the new one is left, and KAGO says where.
 ;
@@ -121,7 +130,7 @@ main.archive:
 		xor	a
 		ld	(de),a
 		ld	(files_at),hl	; HL -> just after it: the files
-		call	archive_format	; returns only for LZH and ZIP
+		call	archive_format	; returns only for a format
 		ld	de,(files_at)
 		call	next_argument	; A = 0: no file named
 		or	a
@@ -133,6 +142,12 @@ main.files:
 		call	switch_given
 		sbc	a,a
 		ld	(storing),a
+		ld	a,(pma_out)	; PMA: stored, -pm0-, for now
+		or	a
+		jr	z,main.open
+		ld	a,0FFh
+		ld	(storing),a
+main.open:
 		call	open_old	; /A and an archive there: opened
 		call	memory_check	; room for packing, or KAGO asks
 		call	create_archive	; returns only if it was
@@ -142,15 +157,17 @@ main.files:
 		call	crc_tables	; CRC-16's table, or CRC-32's
 		ld	hl,0
 		ld	(added),hl
-		ld	a,(appending)
-		or	a
+		ld	a,(appending)	; /A, or PMA: the paths first,
+		ld	hl,pma_out	;   and PMA's directories refused
+		or	(hl)
 		jr	z,main.add
-		inc	a		; /A: the paths to be added, first
 		ld	(collecting),a
 		call	add_words
 		xor	a
 		ld	(collecting),a
-		call	copy_old	; the old members kept
+		ld	a,(appending)
+		or	a
+		call	nz,copy_old	; the old members kept
 main.add:
 		call	add_words
 main.done:
@@ -164,6 +181,7 @@ main.done:
 		ld	de,end_mark	; LZH: the end of the archive, a 0
 		ld	hl,1
 		call	archive_write
+		call	pma_pad		; PMA: then 1Ah, to 128 bytes
 		jr	main.close
 main.central:
 		ld	a,1		; ZIP: the central directory, here
@@ -283,12 +301,13 @@ main.need_dos2:
 ;
 ;   /F: takes LZH, PMA or ZIP, in either case. Without it the archive
 ;   name's last four characters decide: .LZH or .LHA, .PMA, .ZIP. PMA
-;   is not written yet: it ends the program saying so, as do a value
-;   /F: does not take and a name that says no format.
+;   is written as LZH, with pma_out set. A value /F: does not take, and
+;   a name that says no format, end the program saying so.
 ;
 ; Input:	archive_name
-; Output:	returns only for LZH and ZIP
+; Output:	returns only for a format
 ;		out_format = FORMAT_LZH or FORMAT_ZIP
+;		pma_out = 1 for PMA, 0 for the others
 ; Modifies:	AF
 ;		BC
 ;		DE
@@ -332,10 +351,15 @@ archive_format.ended:
 		call	format_name	; Z: A = the format
 		jr	nz,archive_format.none
 archive_format.chosen:
-		ld	de,msg_no_pma
+		ld	c,0		; pma_out: 1 for PMA
 		cp	FORMAT_PMA
-		jr	z,archive_format.say
-		ld	(out_format),a	; LZH or ZIP
+		jr	nz,archive_format.set
+		inc	c
+		xor	a		; written as LZH: FORMAT_LZH
+archive_format.set:
+		ld	(out_format),a
+		ld	a,c
+		ld	(pma_out),a
 		ret
 archive_format.unknown:
 		ld	de,msg_bad_format
@@ -562,6 +586,20 @@ add_entry:
 		ret	z
 add_entry.file:
 		call	entry_path	; lzhw_path, lzhw_length
+		ld	a,(pma_out)	; PMA: a path with directories
+		or	a		;   refuses the run
+		jr	z,add_entry.path
+		ld	a,(lzhw_dir)
+		or	a
+		jp	nz,pma_refuse
+		ld	hl,(fib+FIB_SIZE)	; an empty file: skipped
+		ld	de,(fib+FIB_SIZE+2)	;   (pma_empty)
+		ld	a,h
+		or	l
+		or	d
+		or	e
+		jp	z,pma_empty
+add_entry.path:
 		ld	a,(collecting)	; /A's first walk: the path only
 		or	a
 		jp	nz,path_collect
@@ -709,7 +747,10 @@ add_entry.unpackable:
 add_entry.directory:
 		ld	a,(fib+FIB_NAME)	; "." and "..": passed over
 		cp	"."
-		ret	z		; and on into add_tree otherwise
+		ret	z
+		ld	a,(pma_out)	; PMA: no directories
+		or	a
+		jp	nz,pma_directory	; else on into add_tree
 
 ; add_tree - add a directory: its own -lhd- member, then everything in
 ;   it, at every depth.
@@ -824,7 +865,7 @@ entry_details:
 
 ; pack_or_store - whether a file's data is packed: without /0 (or too
 ;   little memory), and not empty. Its LZH method, -lh5- or -lh0-, for
-;   the header; ZIP's comes from the sizes (zipw.as).
+;   the header, or PMA's -pm0-; ZIP's comes from the sizes (zipw.as).
 ;
 ; Input:	storing; lzhw_size
 ; Output:	packing: 1 to pack, 0 to store
@@ -850,10 +891,14 @@ pack_or_store:
 		ld	a,1
 pack_or_store.set:
 		ld	(packing),a
-		ld	hl,method_lh0
+		ld	hl,method_lh5
+		or	a
+		jr	nz,pack_or_store.method
+		ld	hl,method_lh0	; stored: -lh0-, or PMA's -pm0-
+		ld	a,(pma_out)
 		or	a
 		jr	z,pack_or_store.method
-		ld	hl,method_lh5
+		ld	hl,method_pm0
 pack_or_store.method:
 		ld	de,lzhw_method
 		ld	bc,5
@@ -1020,9 +1065,10 @@ write_header:
 		call	member_header
 		jp	archive_write
 
-; member_header - the member's header, LZH's or ZIP's, by out_format.
+; member_header - the member's header, LZH's or ZIP's, by out_format;
+;   PMA's, level 0, with pma_out.
 ;
-; Input:	out_format; lzhw.as's variables; zipw_crc
+; Input:	out_format, pma_out; lzhw.as's variables; zipw_crc
 ; Output:	DE -> it
 ;		HL = its length
 ; Modifies:	AF
@@ -1034,8 +1080,11 @@ write_header:
 member_header:
 		ld	a,(out_format)
 		or	a
+		jp	nz,zipw_local
+		ld	a,(pma_out)
+		or	a
 		jp	z,lzhw_header
-		jp	zipw_local
+		jp	lzhw_level0
 
 ; keep_member - ZIP: the member's central record, kept for the end.
 ;
@@ -1865,10 +1914,10 @@ descriptor.add:
 		ld	(old_len+2),hl
 		ret
 
-; not_readable - "NAME: not an LZH archive KAGO can read.", or a ZIP
-;   archive, by out_format.
+; not_readable - "NAME: not an LZH archive KAGO can read.", or a PMA or
+;   a ZIP archive, by out_format and pma_out.
 ;
-; Input:	archive_name, out_format
+; Input:	archive_name, out_format, pma_out
 ; Output:	the line
 ; Modifies:	AF
 ;		BC
@@ -1879,11 +1928,15 @@ descriptor.add:
 not_readable:
 		ld	de,archive_name
 		call	print_zero
-		ld	de,msg_not_lzh
+		ld	de,msg_not_zip
 		ld	a,(out_format)
 		or	a
+		jr	nz,not_readable.say
+		ld	de,msg_not_lzh
+		ld	a,(pma_out)
+		or	a
 		jr	z,not_readable.say
-		ld	de,msg_not_zip
+		ld	de,msg_not_pma
 not_readable.say:
 		dos	_STROUT
 		ret
@@ -2191,6 +2244,131 @@ print_member:
 		printl	lzhw_path,(lzhw_length)
 		ret
 
+; pma_pad - PMA: 1Ah after the end, to a whole 128 bytes, as PMARC2
+;   ends an archive.
+;
+; Input:	pma_out; the archive, at its end
+; Output:	the padding, written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+pma_pad:
+		ld	a,(pma_out)
+		or	a
+		ret	z
+		ld	a,1		; where the archive is: DE:HL
+		ld	de,0
+		ld	h,d
+		ld	l,e
+		call	archive_seek
+		ld	a,l		; to the next 128: 0 to 127 bytes
+		neg
+		and	7Fh
+		ret	z
+		ld	c,a
+		ld	b,0
+		push	bc
+		ld	hl,copy_buffer	; that many 1Ah
+		ld	(hl),1Ah
+		dec	bc
+		ld	a,b
+		or	c
+		jr	z,pma_pad.write
+		ld	d,h
+		ld	e,l
+		inc	de
+		ldir
+pma_pad.write:
+		pop	hl
+		ld	de,copy_buffer
+		jp	archive_write
+
+; pma_directory - PMA: a directory found, which PMA cannot hold.
+;
+;   One a wildcard found is skipped, with a line in the second walk;
+;   one the word names outright refuses the run (pma_refuse).
+;
+; Input:	fib: the directory; spec_text: the word
+; Output:	returns only if it is skipped
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+pma_directory:
+		ld	hl,spec_text	; * or ? in the word?
+pma_directory.scan:
+		ld	a,(hl)
+		or	a
+		jr	z,pma_refuse	; none: named outright
+		inc	hl
+		cp	"*"		; neither is ever a two-byte
+		jr	z,pma_directory.skip	;   character's second byte
+		cp	"?"
+		jr	nz,pma_directory.scan
+pma_directory.skip:
+		ld	a,(collecting)	; said in the second walk only
+		or	a
+		ret	nz
+		print	msg_skipping
+		ld	de,fib+FIB_NAME
+		call	print_zero
+		print	msg_no_dirs
+		ret
+
+; pma_empty - PMA: an empty file, skipped, with a line in the second
+;   walk.
+;
+;   PMEXT reads a member's data a 128-byte record at a time, and reads
+;   one even when there is none: past an empty member, it stops
+;   ("Overseek error"), and the members after it are lost. PMARC2 leaves
+;   an empty file out ("is empty."), and so does KAGO. In both walks, so
+;   that with /A an old member of that name is kept.
+;
+; Input:	lzhw_path, lzhw_length: its path
+; Output:	the line, in the second walk
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+pma_empty:
+		ld	a,(collecting)
+		or	a
+		ret	nz
+		print	msg_skipping
+		call	print_member
+		print	msg_empty
+		ret
+
+; pma_refuse - PMA: a word that names a directory, or a path with one;
+;   the run stops, the archive deleted: nothing written.
+;
+;   It comes in the first walk, before any member is written; with /A
+;   the old archive is as it was.
+;
+; Input:	spec_text: the word
+; Output:	does not return
+; Modifies:	everything
+; Scratch:	none
+
+pma_refuse:
+		ld	de,spec_text
+		call	print_zero
+		print	msg_no_dirs
+		print	msg_stopped
+		ld	a,(archive_handle)
+		ld	b,a
+		dos	_CLOSE
+		ld	de,(write_name)	; the archive, or with /A the new one
+		dos	_DELETE
+		dos	_TERM0
+
 ; archive_write - write HL bytes from DE to the archive.
 ;
 ;   Fewer bytes written than asked means the disk is full.
@@ -2281,15 +2459,17 @@ fail_closed:
 ; msg_usage		the rest of the usage, after the banner
 ; msg_no_mapper		heapinit found no mapper support
 ; msg_no_memory		no mapper memory left for a list
-; msg_no_format, msg_bad_format, msg_no_pma
+; msg_no_format, msg_bad_format
 ;			archive_format's refusals
 ; format_table		the formats' names: three letters, then the
 ;			format, for each; 0 after the last
 ; msg_exists		after the archive's name, when it exists
 ; msg_nothing, msg_not_written, msg_not_changed
 ;			around the archive's name, when nothing was added
-; msg_not_lzh, msg_not_zip
+; msg_not_lzh, msg_not_pma, msg_not_zip
 ;			/A's refusals
+; msg_no_dirs		PMA's refusal, and its skipped directories' line
+; msg_empty		PMA's line for an empty file
 ; descriptor_sig	a data descriptor's signature
 ; msg_left		where the new archive is, when it could not take
 ;			the old one's place
@@ -2301,8 +2481,9 @@ fail_closed:
 ; msg_adding, msg_replacing, msg_ok, msg_skipping, msg_colon, msg_crlf,
 ; msg_dotdot, msg_already
 ;			adding's words, put together per member
-; method_lh0, method_lh5, method_lhd
-;			the methods: stored, packed, a directory
+; method_lh0, method_lh5, method_lhd, method_pm0
+;			the methods: stored, packed, a directory; PMA's
+;			stored
 ; no_name, end_mark	a 0 byte: the empty name, for "everything in
 ;			it", and the end of an archive
 ;
@@ -2353,9 +2534,6 @@ msg_no_mapper:	defb	"KAGO needs MSX-DOS2's mapper support."
 		defb	CHR_CR,CHR_LF,"$"
 msg_no_memory:	defb	"Not enough mapper memory left."
 		defb	CHR_CR,CHR_LF,"$"
-msg_no_pma:
-		defb	"Writing PMA archives is not supported yet."
-		defb	CHR_CR,CHR_LF,"$"
 format_table:	defb	"LZH",FORMAT_LZH,"LHA",FORMAT_LZH
 		defb	"PMA",FORMAT_PMA,"ZIP",FORMAT_ZIP,0
 msg_exists:	defb	" already exists.",CHR_CR,CHR_LF,"$"
@@ -2365,6 +2543,12 @@ msg_not_written:
 msg_not_changed:
 		defb	" was not changed.",CHR_CR,CHR_LF,"$"
 msg_not_lzh:	defb	": not an LZH archive KAGO can read."
+		defb	CHR_CR,CHR_LF,"$"
+msg_not_pma:	defb	": not a PMA archive KAGO can read."
+		defb	CHR_CR,CHR_LF,"$"
+msg_no_dirs:	defb	": PMA archives have no directories."
+		defb	CHR_CR,CHR_LF,"$"
+msg_empty:	defb	": PMA archives cannot hold an empty file."
 		defb	CHR_CR,CHR_LF,"$"
 msg_not_zip:	defb	": not a ZIP archive KAGO can read."
 		defb	CHR_CR,CHR_LF,"$"
@@ -2389,6 +2573,7 @@ msg_already:	defb	": added already",CHR_CR,CHR_LF,"$"
 method_lh0:	defb	"-lh0-"
 method_lh5:	defb	"-lh5-"
 method_lhd:	defb	"-lhd-"
+method_pm0:	defb	"-pm0-"
 no_name:
 end_mark:	defb	0
 
@@ -2420,6 +2605,7 @@ end_mark:	defb	0
 ; sig_buf		descriptor: the 4 bytes after the data
 ; line_word		"Adding " or "Replacing ": path_check
 ; out_format		FORMAT_LZH or FORMAT_ZIP: archive_format
+; pma_out		1 for PMA, written as LZH: archive_format
 ; archive_handle	the archive, open to write
 ; archive_drive, archive_cluster, archive_entry
 ;			its drive, first cluster and name, as MSX-DOS2
@@ -2450,6 +2636,7 @@ end_mark:	defb	0
 ;
 archive_name:	defs	128
 out_format:	defs	1
+pma_out:	defs	1
 archive_handle:	defs	1
 archive_drive:	defs	1
 archive_cluster:	defs	2

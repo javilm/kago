@@ -27,8 +27,20 @@
 ; The whole header's length is never a multiple of 256: its first byte
 ; would be 0, which is how an archive ends, so a 0 byte is added after
 ; the last extended header, as LHA does.
+;
+; A PMA member's header is level 0 instead (lzhw_level0), as PMARC2
+; writes it, with no extended area: PMA has no directories.
+;
+;   0	the length of the rest, its CRC included: 22 + the name's
+;   1	the sum of the bytes from 2 to the end, modulo 256
+;   2	the method: "-pm0-" or "-pm2-"
+;   7	the packed size and the original size, 4 bytes each
+;   15	MS-DOS's time and date words
+;   19	the MS-DOS attributes, then the level, 0
+;   21	the name's length, the name, then the data's CRC-16
 
 		public	lzhw_header
+		public	lzhw_level0
 		public	lzhw_method
 		public	lzhw_path
 		public	lzhw_dir
@@ -175,6 +187,72 @@ lzhw_header.sized:
 		call	crc_update	; DE -> the header, BC = its length
 		ld	hl,(crc_value)
 		ld	(lzhw_buffer+27),hl
+		pop	hl
+		ld	de,lzhw_buffer
+		ret
+
+; lzhw_level0 - a PMA member's header, level 0, from lzhw.as's
+;   variables.
+;
+;   The path is the name alone: KAGO refuses directories in PMA.
+;
+; Input:	lzhw_method, lzhw_path, lzhw_length, lzhw_size,
+;		lzhw_packed, lzhw_crc, lzhw_date, lzhw_attr
+; Output:	DE -> the header, in lzhw_buffer
+;		HL = its length
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+lzhw_level0:
+		ld	hl,lzhw_method	; the method
+		ld	de,lzhw_buffer+2
+		ld	bc,5
+		ldir
+		ld	hl,lzhw_packed	; the packed size
+		ld	c,4
+		ldir
+		ld	hl,lzhw_size	; the original size
+		ld	c,4
+		ldir
+		ld	hl,lzhw_date	; the time and the date
+		ld	c,4
+		ldir
+		ld	a,(lzhw_attr)	; the attributes, the level
+		ld	(de),a
+		inc	de
+		xor	a
+		ld	(de),a
+		inc	de
+		ld	a,(lzhw_length)	; the name
+		ld	(de),a
+		inc	de
+		ld	c,a
+		ld	hl,lzhw_path
+		ldir
+		ld	hl,(lzhw_crc)	; the data's CRC
+		ex	de,hl
+		ld	(hl),e
+		inc	hl
+		ld	(hl),d
+		inc	hl
+		ld	de,lzhw_buffer	; HL = the length
+		or	a
+		sbc	hl,de
+		ld	a,l		; byte 0: the rest's
+		sub	2
+		ld	(lzhw_buffer),a
+		push	hl
+		ld	b,a		; byte 1: its sum
+		ld	hl,lzhw_buffer+2
+		xor	a
+lzhw_level0.sum:
+		add	a,(hl)
+		inc	hl
+		djnz	lzhw_level0.sum
+		ld	(lzhw_buffer+1),a
 		pop	hl
 		ld	de,lzhw_buffer
 		ret
@@ -392,7 +470,7 @@ month_days:	defw	0,31,59,90,120,151,181,212,243,273,304,334
 ; Variables: the member, as KAGO describes it, and the header:
 ;
 ; lzhw_method		the method, 5 characters: "-lh5-", "-lh0-",
-;			"-lhd-"
+;			"-lhd-"; PMA's "-pm0-"
 ; lzhw_path		the member's path, "\" between its parts, as it
 ;			is stored: the directories, then the name
 ; lzhw_dir		the directories' length, each with its "\": 0
