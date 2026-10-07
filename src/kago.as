@@ -5,7 +5,8 @@
 ; It checks for MSX-DOS2 and the command line, and chooses the format:
 ; /F: names it, or the archive's extension does. A PMA archive is
 ; written as an LZH one, with level 0 headers (lzhw_level0), its
-; members stored as -pm0- for now, and its end padded with 1Ah to a
+; members packed with -pm2- (lh5w.as) or stored as -pm0-, and its end
+; padded with 1Ah to a
 ; whole 128 bytes (pma_pad). An empty file is skipped, as PMEXT
 ; cannot read one (pma_empty). PMA has no directories, so a directory or
 ; a path with one in it refuses the run before anything is written
@@ -142,12 +143,6 @@ main.files:
 		call	switch_given
 		sbc	a,a
 		ld	(storing),a
-		ld	a,(pma_out)	; PMA: stored, -pm0-, for now
-		or	a
-		jr	z,main.open
-		ld	a,0FFh
-		ld	(storing),a
-main.open:
 		call	open_old	; /A and an archive there: opened
 		call	memory_check	; room for packing, or KAGO asks
 		call	create_archive	; returns only if it was
@@ -630,10 +625,15 @@ add_entry.again:
 		ld	a,(packing)
 		or	a
 		jr	z,add_entry.crc
-		ld	a,(out_format)	; bit 1: deflate, for ZIP (2)
-		and	FORMAT_ZIP
+		ld	a,(pma_out)	; bit 2: -pm2-, for PMA (1)
+		add	a,a
+		add	a,a
 		ld	hl,pack_mode	; bit 0: small
 		or	(hl)
+		ld	c,a
+		ld	a,(out_format)	; bit 1: deflate, for ZIP (2)
+		and	FORMAT_ZIP
+		or	c
 		ld	hl,(fib+FIB_SIZE)	; packing stops at its size
 		ld	de,(fib+FIB_SIZE+2)
 		call	lh5w_start	; CY: no memory for its tables
@@ -726,7 +726,12 @@ add_entry.close:
 add_entry.unpackable:
 		xor	a		; stored after all, from the start
 		ld	(packing),a
-		ld	hl,method_lh0
+		ld	hl,method_lh0	; -lh0-, or PMA's -pm0-
+		ld	a,(pma_out)
+		or	a
+		jr	z,add_entry.method
+		ld	hl,method_pm0
+add_entry.method:
 		ld	de,lzhw_method
 		ld	bc,5
 		ldir
@@ -865,7 +870,8 @@ entry_details:
 
 ; pack_or_store - whether a file's data is packed: without /0 (or too
 ;   little memory), and not empty. Its LZH method, -lh5- or -lh0-, for
-;   the header, or PMA's -pm0-; ZIP's comes from the sizes (zipw.as).
+;   the header, or PMA's -pm2- or -pm0-; ZIP's comes from the sizes
+;   (zipw.as).
 ;
 ; Input:	storing; lzhw_size
 ; Output:	packing: 1 to pack, 0 to store
@@ -891,14 +897,17 @@ pack_or_store:
 		ld	a,1
 pack_or_store.set:
 		ld	(packing),a
-		ld	hl,method_lh5
 		or	a
-		jr	nz,pack_or_store.method
+		ld	hl,method_lh5	; packed: -lh5-, or PMA's -pm2-
+		ld	de,method_pm2
+		jr	nz,pack_or_store.pma
 		ld	hl,method_lh0	; stored: -lh0-, or PMA's -pm0-
+		ld	de,method_pm0
+pack_or_store.pma:
 		ld	a,(pma_out)
 		or	a
 		jr	z,pack_or_store.method
-		ld	hl,method_pm0
+		ex	de,hl
 pack_or_store.method:
 		ld	de,lzhw_method
 		ld	bc,5
@@ -2481,9 +2490,9 @@ fail_closed:
 ; msg_adding, msg_replacing, msg_ok, msg_skipping, msg_colon, msg_crlf,
 ; msg_dotdot, msg_already
 ;			adding's words, put together per member
-; method_lh0, method_lh5, method_lhd, method_pm0
+; method_lh0, method_lh5, method_lhd, method_pm0, method_pm2
 ;			the methods: stored, packed, a directory; PMA's
-;			stored
+;			stored and packed
 ; no_name, end_mark	a 0 byte: the empty name, for "everything in
 ;			it", and the end of an archive
 ;
@@ -2574,6 +2583,7 @@ method_lh0:	defb	"-lh0-"
 method_lh5:	defb	"-lh5-"
 method_lhd:	defb	"-lhd-"
 method_pm0:	defb	"-pm0-"
+method_pm2:	defb	"-pm2-"
 no_name:
 end_mark:	defb	0
 

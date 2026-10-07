@@ -6,7 +6,9 @@ rem -pm1-), lhasa's LONG.TXT, 1241659 bytes, into TESTS\OUT\P2LONG and
 rem TESTS\OUT\P1LONG. Then how long KAGO takes to
 rem pack GPL-2 (18092 bytes of text, from the UNKAGO tests),
 rem BUILD\UNKAGO.COM and KIN\BIG.DAT (70000 bytes), each into its own
-rem archive: LZH, then ZIP. Run it from repo\, after BUILD and TESTS.
+rem archive: LZH, then ZIP, then PMA, the last from each file's own
+rem directory, as PMA has no directories. Run it from repo\, after BUILD
+rem and TESTS.
 rem TIME, before and after, goes to TESTS\SPEED.TXT, which is read on the
 rem Mac. TESTS\ENTER.TXT answers TIME's question with Enter, which
 rem keeps the clock as it is. The file lands in TESTS\OUT\SPEED.
@@ -29,6 +31,9 @@ del tests\out\speed\kbig.lzh
 del tests\out\speed\kgpl.zip
 del tests\out\speed\kcom.zip
 del tests\out\speed\kbig.zip
+del tests\out\speed\kgpl.pma
+del tests\out\speed\kcom.pma
+del tests\out\speed\kbig.pma
 time<tests\enter.txt>>tests\speed.txt
 build\kago /Q tests\out\speed\kgpl.lzh tests\out\gpl-2>>tests\speed.txt
 time<tests\enter.txt>>tests\speed.txt
@@ -42,4 +47,14 @@ build\kago /Q tests\out\speed\kcom.zip build\unkago.com>>tests\speed.txt
 time<tests\enter.txt>>tests\speed.txt
 build\kago /Q tests\out\speed\kbig.zip tests\out\kin\big.dat>>tests\speed.txt
 time<tests\enter.txt>>tests\speed.txt
+cd tests\out
+..\..\build\kago /Q speed\kgpl.pma gpl-2>>..\speed.txt
+time<..\enter.txt>>..\speed.txt
+cd ..\..\build
+kago /Q ..\tests\out\speed\kcom.pma unkago.com>>..\tests\speed.txt
+time<..\tests\enter.txt>>..\tests\speed.txt
+cd ..\tests\out\kin
+..\..\..\build\kago /Q ..\speed\kbig.pma big.dat>>..\..\speed.txt
+time<..\..\enter.txt>>..\..\speed.txt
+cd ..\..\..
 

@@ -72,7 +72,19 @@
 ; lowest first: putcode is changed in place for that (lh5w_start), and
 ; d_putbits writes the numbers.
 ;
-; mkkago.py's model (notes 026, 029) is this file, step for step.
+; -PM2- (note 035), PMA's method, takes the same symbols too, sent as
+; PMARC2 sends them (pm2_send): a literal goes as its place in a
+; move-to-front list of the 256 byte values (mtf_place, an array, kept
+; as the symbols are decided, a match's bytes too); a match as a code
+; for its length (3 to 256) and an offset code for its distance's size.
+; Its code tree may change only every 4 KB of output, so -pm2- sends the
+; block not when it fills but at those points (pm2_count): a unit, its
+; symbols counted when it is sent, then its trees and its codes. The
+; first unit has offset trees of its own at 1 KB and 2 KB, as PMA asks.
+; The block holds up to 4640 bytes, for a unit of literals.
+;
+; mkkago.py's model (notes 026, 029) is this file, step for step, and
+; pm2enc.py's (note 035) its -pm2-.
 
 		public	lh5w_start
 		public	lh5w_data
@@ -97,6 +109,17 @@ THRESHOLD	equ	3		; and how short
 CHAIN		equ	32		; a search's steps at most
 HASH_SIZE	equ	2048		; head's entries: an 11-bit hash
 BUF_SIZE	equ	4096		; a block's symbols, as LHA keeps them
+BUF_PM2		equ	4640		; -pm2-'s: 4096 literals and their
+					;   flags, and a match after them
+UNIT		equ	4096		; -pm2-: the output between code trees
+PC_FREQ		equ	600		; -pm2-: the codes' counts, 29 and
+					;   room, from word 600 in c_freq
+PO_FREQ		equ	660		;   the offset codes', 16 words a
+					;   stretch, from word 660
+OFF_AT		equ	32		;   the offset codes' lengths and
+					;   codes: from symbol 32
+CODE_MAX	equ	12		;   the longest code, and offset code
+OFF_MAX		equ	7
 AHEAD		equ	514		; a round needs this many bytes read
 					;   from its first position on
 
@@ -113,8 +136,8 @@ C_CODE		equ	6115		; C_SYMS words: each code, highest
 					;   of the symbols first
 HEAD		equ	7135		; HASH_SIZE words: each hash's latest
 					;   position, 0FFFFh for none
-BUFFER		equ	11231		; BUF_SIZE bytes: the block's symbols
-TABLES_SIZE	equ	15327
+BUFFER		equ	11231		; BUF_PM2 bytes: the block's symbols
+TABLES_SIZE	equ	BUFFER+BUF_PM2
 
 ; Deflate's (d_send_block): the literals' and lengths' tree in c's
 ; arrays, the distances' after it; their counts further on, past the
@@ -142,11 +165,13 @@ MAX_CL		equ	7		;   code lengths' tree's
 ;   With A bit 0 set, the first time, the text and prev share one
 ;   segment, with a 4 KB window: 32 KB of mapper instead of 48 (small,
 ;   R7). With bit 1, the member is deflate; putcode's two bytes are
-;   set for its bits, lowest first (p_put_rot, p_put_mark).
+;   set for its bits, lowest first (p_put_rot, p_put_mark). With bit 2,
+;   it is -pm2- (pm2_start).
 ;
 ; Input:	DE:HL = the member's size: packing stops when the packed
 ;		size reaches it
-;		A bit 0: small, the first call decides; bit 1: deflate
+;		A bit 0: small, the first call decides; bit 1: deflate;
+;		bit 2: -pm2-
 ; Output:	CY set = no mapper memory
 ; Modifies:	AF
 ;		BC
@@ -160,6 +185,9 @@ lh5w_start:
 		call	forget		; page 2: KAGO's until now
 		ld	(limit),hl
 		ld	(limit+2),de
+		ld	a,(small)	; bit 2: -pm2-
+		and	4
+		ld	(pm2_mode),a
 		ld	a,(small)	; bit 1: deflate
 		and	2
 		ld	(deflate),a
@@ -275,6 +303,9 @@ lh5w_start.ready:
 		inc	de
 		ld	bc,2*HASH_SIZE-1
 		ldir
+		ld	a,(pm2_mode)	; -pm2-: its start
+		or	a
+		call	nz,pm2_start
 		or	a		; carry clear: ready
 		ret
 
@@ -803,6 +834,9 @@ round.a:
 		ld	hl,(last_dist)
 		dec	hl
 		ld	(pend_p),hl
+		ld	a,(pm2_mode)	; -pm2-: its bytes to the list's
+		or	a		;   head
+		call	nz,mtf_match
 		ld	hl,(last_len)	; next: its other positions, B
 		dec	hl		;   and A
 		dec	hl
@@ -816,7 +850,12 @@ round.literal:
 		ld	hl,(s_a)
 		dec	hl
 		call	ring_addr
-		ld	l,(hl)
+		ld	c,(hl)
+		ld	a,(pm2_mode)	; -pm2-: its place in the list
+		or	a
+		ld	a,c
+		call	nz,mtf_place
+		ld	l,a
 		ld	h,0
 		ld	(pend_c),hl
 		ld	hl,0		; next: A + 1's search
@@ -1123,10 +1162,11 @@ out_pending:
 ;
 ;   huf.c's output_st1: a flags byte starts every 8 symbols; when it
 ;   would start with fewer than 24 bytes left in the block, the block is
-;   sent first (send_block). A literal is its byte; a match is its
-;   symbol's low byte (length - 3), then its distance - 1, high byte
-;   first, its flag bit set. Each symbol's count, and each distance's
-;   size's, go up by one.
+;   sent first (send_block); for -pm2-, at PMA's points instead
+;   (pm2_count). A literal is its byte (-pm2-: its place in the list);
+;   a match is its symbol's low byte (length - 3), then its distance -
+;   1, high byte first, its flag bit set. Each symbol's count, and each
+;   distance's size's, go up by one.
 ;
 ; Input:	A = 1 for a literal, 2 for a match
 ;		HL = the symbol: 0 to 509
@@ -1151,6 +1191,9 @@ out_sym:
 		jr	nz,out_sym.put
 		ld	a,80h		; none left: a new flags byte
 		ld	(mask),a
+		ld	a,(pm2_mode)	; -pm2-: sent at its points
+		or	a
+		jr	nz,out_sym.group
 		ld	hl,(bufpos)
 		ld	de,BUF_SIZE-24
 		or	a
@@ -1221,7 +1264,10 @@ out_sym.done:
 		or	a
 		sbc	hl,de
 		ld	(bufpos),hl
-		ret
+		ld	a,(pm2_mode)	; -pm2-: counted, and at its
+		or	a		;   points sent
+		ret	z
+		jp	pm2_count
 
 ; bitlen - how many bits a number takes: 0 for 0.
 ;
@@ -1255,7 +1301,8 @@ bitlen.done:
 ;   pt's tree and lengths, and c's lengths (or c's one symbol); p's tree
 ;   and lengths (or its one symbol); then each symbol's code, a match's
 ;   distance after it (encode_p). The counts go back to 0. A deflate
-;   member's block goes to d_send_block instead.
+;   member's block goes to d_send_block instead, and a -pm2- member's
+;   last unit to pm2_end.
 ;
 ; Input:	the block, its counts; the tables mapped
 ; Output:	written
@@ -1271,6 +1318,9 @@ send_block:
 		ld	a,(deflate)	; deflate's way
 		or	a
 		jp	nz,d_send_block
+		ld	a,(pm2_mode)	; -pm2-'s
+		or	a
+		jp	nz,pm2_end
 		ld	hl,c_n		; c's tree
 		call	make_tree	; HL = its root
 		ld	(c_root),hl
@@ -1370,6 +1420,678 @@ send_block.sent:
 		ld	hl,p_freq
 		ld	bc,2*P_SYMS
 		jp	zero
+
+; PMA (note 035): -pm2-, PMARC2's way of sending the same symbols.
+;
+; pm2_count - after out_sym, for -pm2-: one more symbol, and its bytes
+;   off what is left of the unit; when that runs out, the unit is sent.
+;
+;   A unit is the symbols up to the one whose bytes reach the next 4 KB
+;   of output, which may run past it: PMA's code tree may change only
+;   there. Then what is left starts at 4096 again, less that overrun.
+;
+; Input:	o_kind, o_c: the symbol out_sym has just put in
+;		pm2_left, pm2_syms; the tables mapped
+; Output:	pm2_left, pm2_syms; the unit sent when it is complete
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	none
+
+pm2_count:
+		ld	hl,(pm2_syms)
+		inc	hl
+		ld	(pm2_syms),hl
+		ld	de,1		; its bytes: 1, or a match's length
+		ld	a,(o_kind)
+		cp	2
+		jr	nz,pm2_count.bytes
+		ld	a,(o_c)		; the length less 3
+		ld	e,a
+		inc	de
+		inc	de
+		inc	de
+pm2_count.bytes:
+		ld	hl,(pm2_left)
+		or	a
+		sbc	hl,de
+		ld	(pm2_left),hl
+		jr	z,pm2_count.send	; exactly at the point
+		bit	7,h
+		ret	z		; not there yet
+pm2_count.send:
+		call	pm2_send
+		ld	hl,(pm2_left)	; the next unit: 4096 less the
+		ld	de,UNIT		;   overrun
+		add	hl,de
+		ld	(pm2_left),hl
+		ret
+
+; pm2_send - a unit's trees, then its symbols' codes.
+;
+;   Twice through the unit's symbols (pm2_code). First they are counted:
+;   each one's code, and each match's offset code, by stretch: in the
+;   first unit, the first, second and next 2 KB of output (points 1024
+;   and 2048) have offset trees of their own, of 5, 6 and 7 codes, as
+;   the distances they can have; later units one of 8. Then, after a 1
+;   bit in a later unit (a new code tree), the code tree; the first
+;   stretch's offset tree, if there are offset codes (pm2_need); then
+;   each symbol's codes and bits, the next stretch's offset tree after
+;   the symbol that reaches its point.
+;
+; Input:	the unit's symbols, pm2_syms of them, in the block
+;		pm2_unit; the tables mapped
+; Output:	written; the block empty; pm2_unit one on, to 2 at most
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	none
+
+pm2_send:
+		ld	hl,(c_freq_at)	; the counts: 0
+		ld	de,2*PC_FREQ
+		add	hl,de
+		ld	bc,2*(PO_FREQ+48-PC_FREQ)
+		call	zero
+		call	pm2_walk	; counted
+pm2_send.count:
+		call	pm2_code
+		ld	a,(ps_code)	; its code
+		ld	l,a
+		ld	h,0
+		ld	de,PC_FREQ
+		call	pm2_inc
+		ld	a,(ps_m)	; a match: its offset code, in its
+		or	a		;   stretch's counts
+		jr	z,pm2_send.counted
+		ld	a,(ps_st)
+		add	a,a
+		add	a,a
+		add	a,a
+		add	a,a
+		ld	hl,ps_oc
+		add	a,(hl)
+		ld	l,a
+		ld	h,0
+		ld	de,PO_FREQ
+		call	pm2_inc
+pm2_send.counted:
+		call	pm2_advance
+		call	pm2_left_one
+		jr	nz,pm2_send.count
+		ld	a,(pm2_unit)	; a later unit: 1, a new code tree
+		or	a
+		jr	z,pm2_send.trees
+		ld	hl,1
+		ld	b,1
+		call	putbits
+pm2_send.trees:
+		call	code_tree_out
+		call	pm2_walk	; then the codes
+		ld	a,(pm2_need)
+		or	a
+		call	nz,off_tree_out
+pm2_send.symbol:
+		call	pm2_code
+		ld	a,(ps_code)	; the code, and its bits
+		ld	e,a
+		ld	d,0
+		call	c_code_out
+		ld	a,(ps_xb)
+		or	a
+		jr	z,pm2_send.match
+		ld	b,a
+		ld	hl,(ps_xv)
+		call	putbits
+pm2_send.match:
+		ld	a,(ps_m)	; a match: its offset code, its bits
+		or	a
+		jr	z,pm2_send.sent
+		ld	a,(ps_oc)
+		add	a,OFF_AT
+		ld	e,a
+		ld	d,0
+		call	c_code_out
+		ld	a,(ps_ob)
+		ld	b,a
+		ld	hl,(ps_d)
+		call	putbits
+pm2_send.sent:
+		call	pm2_advance	; CY: a new stretch
+		jr	nc,pm2_send.next
+		ld	a,(pm2_need)
+		or	a
+		call	nz,off_tree_out
+pm2_send.next:
+		call	pm2_left_one
+		jr	nz,pm2_send.symbol
+		ld	hl,0		; the block: empty
+		ld	(bufpos),hl
+		ld	(pm2_syms),hl
+		xor	a
+		ld	(mask),a
+		ld	a,(pm2_unit)	; the next unit: 1, then 2 for all
+		cp	2		;   after
+		ret	nc
+		inc	a
+		ld	(pm2_unit),a
+		ret
+
+; pm2_walk - back to the unit's first symbol, at its first stretch.
+;
+; Input:	buf_at, pm2_syms
+; Output:	e_at, e_bit, ps_o, ps_st, ps_cnt
+; Modifies:	AF
+;		HL
+; Scratch:	none
+
+pm2_walk:
+		ld	hl,(buf_at)
+		ld	(e_at),hl
+		ld	hl,(pm2_syms)
+		ld	(ps_cnt),hl
+		ld	hl,0
+		ld	(ps_o),hl
+		xor	a
+		ld	(e_bit),a
+		ld	(ps_st),a
+		ret
+
+; pm2_left_one - one symbol fewer to go.
+;
+; Input:	ps_cnt
+; Output:	ps_cnt less 1; Z set = none left
+; Modifies:	AF
+;		HL
+; Scratch:	none
+
+pm2_left_one:
+		ld	hl,(ps_cnt)
+		dec	hl
+		ld	(ps_cnt),hl
+		ld	a,h
+		or	l
+		ret
+
+; pm2_inc - one more in a count.
+;
+; Input:	HL + DE = the count's word, in c_freq
+; Modifies:	AF
+;		HL
+; Scratch:	none
+
+pm2_inc:
+		add	hl,de
+		add	hl,hl
+		ld	de,(c_freq_at)
+		add	hl,de
+		inc	(hl)
+		ret	nz
+		inc	hl
+		inc	(hl)
+		ret
+
+; pm2_advance - the output, past the symbol; in the first unit, the
+;   stretch it reaches. No symbol is long enough to pass two points.
+;
+; Input:	ps_o, ps_n, ps_st, pm2_unit
+; Output:	ps_o; CY set = a new stretch, ps_st one on
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+pm2_advance:
+		ld	hl,(ps_o)
+		ld	de,(ps_n)
+		add	hl,de
+		ld	(ps_o),hl
+		ld	a,(pm2_unit)	; later units: one stretch
+		or	a
+		ret	nz		; CY clear
+		ld	a,h		; the output's whole KB
+		rrca
+		rrca
+		and	3Fh
+		ld	c,a
+		ld	a,(ps_st)	; the next point: (stretch + 1) KB,
+		cp	2		;   1 and 2 only
+		ret	nc
+		inc	a
+		ld	b,a
+		ld	a,c
+		cp	b		; CY: not reached
+		ccf
+		ret	nc
+		ld	a,b
+		ld	(ps_st),a
+		ret			; CY set
+
+; pm2_code - the unit's next symbol, as -pm2- sends it.
+;
+;   A literal is its place in the list (round): its code is its row in
+;   hist_rows, the place's low bits after it. A match's code is 9 to 22
+;   for 3 to 16 bytes; longer, its row in copy_rows, and the length's
+;   offset in it after it. Its distance less 1: offset code 0 and 6
+;   bits under 64; otherwise its bits less 6, and the distance's bits
+;   but the highest after it, which putbits leaves out.
+;
+; Input:	the block, at e_at (buf_next)
+; Output:	ps_m: 0FFh for a match; ps_code; ps_xv, ps_xb: the bits
+;		after it; ps_n: its bytes; for a match ps_d, ps_oc, ps_ob
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+pm2_code:
+		call	buf_next	; CY: a match, E = length - 3,
+		ld	hl,0		;   BC = distance - 1; else E
+		ld	(ps_xv),hl	;   = the place
+		sbc	a,a		; ps_m: 0FFh for a match
+		ld	(ps_m),a
+		jr	c,pm2_code.match
+		inc	hl		; a byte: 1
+		ld	(ps_n),hl
+		ld	a,e
+		ld	(ps_xv),a	; its low bits go
+		ld	hl,hist_rows+14	; its row: from the last back
+		ld	c,7
+pm2_code.row:
+		cp	(hl)
+		jr	nc,pm2_code.byte
+		dec	hl
+		dec	hl
+		dec	c
+		jr	pm2_code.row
+pm2_code.byte:
+		inc	hl
+		ld	a,(hl)
+		ld	(ps_xb),a
+		ld	a,c
+		ld	(ps_code),a
+		ret
+pm2_code.match:
+		ld	(ps_d),bc
+		ld	a,e		; its bytes: E + 3
+		ld	l,a
+		ld	h,0
+		inc	hl
+		inc	hl
+		inc	hl
+		ld	(ps_n),hl
+		cp	14		; 3 to 16: code E + 9, no bits
+		jr	nc,pm2_code.long
+		add	a,9
+		ld	(ps_code),a
+		xor	a
+		ld	(ps_xb),a
+		jr	pm2_code.distance
+pm2_code.long:
+		ld	hl,copy_rows+12	; its row: from the last back
+pm2_code.lrow:
+		cp	(hl)
+		jr	nc,pm2_code.length
+		dec	hl
+		dec	hl
+		dec	hl
+		jr	pm2_code.lrow
+pm2_code.length:
+		sub	(hl)		; its offset in the row
+		ld	(ps_xv),a
+		inc	hl
+		ld	a,(hl)
+		ld	(ps_code),a
+		inc	hl
+		ld	a,(hl)
+		ld	(ps_xb),a
+pm2_code.distance:
+		ld	hl,(ps_d)	; its bits: under 7, code 0 and 6
+		call	bitlen
+		sub	6
+		jr	nc,pm2_code.far
+		xor	a
+pm2_code.far:
+		ld	(ps_oc),a
+		add	a,5		; code n: n + 5 bits; code 0: 6
+		cp	5
+		jr	nz,pm2_code.bits
+		inc	a
+pm2_code.bits:
+		ld	(ps_ob),a
+		ret
+
+; code_tree_out - the unit's code tree: its lengths, as PMA sends them.
+;
+;   make_tree, 12 bits at most, two codes at least (guarded_tree). Then
+;   how many codes there are, up to the last with a length (5 bits); the
+;   shortest length (3 bits); the bits each length takes (3 bits); and
+;   each length, 0 for none, else less the shortest, plus 1. Ten codes
+;   or more mean there are matches, and offset trees (pm2_need).
+;
+; Input:	PC_FREQ's counts; the tables mapped
+; Output:	written; c_len, c_code from symbol 0; pm2_need
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	pw_n
+;		pw_min
+;		pw_lb
+
+code_tree_out:
+		ld	a,CODE_MAX
+		ld	(mt_max),a
+		ld	bc,29		; 29 codes, from symbol 0, their
+		ld	de,0		;   counts from PC_FREQ
+		ld	hl,PC_FREQ
+		call	d_tree
+		ld	hl,(c_len_at)	; how many: up to the last length
+		ld	bc,29
+		add	hl,bc
+code_tree_out.last:
+		dec	hl
+		ld	a,(hl)
+		or	a
+		jr	nz,code_tree_out.counted
+		dec	c
+		jr	code_tree_out.last
+code_tree_out.counted:
+		ld	a,c
+		ld	(pw_n),a
+		cp	10		; ten or more: offset trees
+		sbc	a,a
+		inc	a
+		ld	(pm2_need),a
+		ld	hl,(c_len_at)	; the shortest and the longest
+		ld	b,c
+		ld	de,0FFh		; D = longest, E = shortest
+code_tree_out.scan:
+		ld	a,(hl)
+		inc	hl
+		or	a
+		jr	z,code_tree_out.skip
+		cp	e
+		jr	nc,code_tree_out.short
+		ld	e,a
+code_tree_out.short:
+		cp	d
+		jr	c,code_tree_out.skip
+		ld	d,a
+code_tree_out.skip:
+		djnz	code_tree_out.scan
+		ld	a,e
+		ld	(pw_min),a
+		ld	a,d		; the bits for longest - shortest + 1
+		sub	e
+		inc	a
+		ld	l,a
+		ld	h,0
+		call	bitlen
+		ld	(pw_lb),a
+		ld	a,(pw_n)	; then the three numbers
+		ld	l,a
+		ld	h,0
+		ld	b,5
+		call	putbits
+		ld	a,(pw_min)
+		ld	l,a
+		ld	h,0
+		ld	b,3
+		call	putbits
+		ld	a,(pw_lb)
+		ld	l,a
+		ld	h,0
+		ld	b,3
+		call	putbits
+		ld	hl,(c_len_at)	; and the lengths
+		ld	(pw_at),hl
+code_tree_out.length:
+		ld	hl,(pw_at)
+		ld	a,(hl)
+		inc	hl
+		ld	(pw_at),hl
+		or	a
+		jr	z,code_tree_out.put
+		ld	hl,pw_min
+		sub	(hl)
+		inc	a
+code_tree_out.put:
+		ld	l,a
+		ld	h,0
+		ld	a,(pw_lb)
+		ld	b,a
+		call	putbits
+		ld	hl,pw_n
+		dec	(hl)
+		jr	nz,code_tree_out.length
+		ret
+
+; off_tree_out - the stretch's offset tree: 3 bits a length.
+;
+;   Of 5, 6 or 7 codes in the first unit's three stretches, 8 later;
+;   make_tree, 7 bits at most, two codes at least. A stretch with no
+;   match gets codes 0 and 1, never sent.
+;
+; Input:	ps_st, pm2_unit; PO_FREQ's counts, 16 words a stretch
+; Output:	written; c_len, c_code from OFF_AT
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	pw_n
+;		pw_at
+
+off_tree_out:
+		ld	a,OFF_MAX
+		ld	(mt_max),a
+		ld	a,(ps_st)	; its codes: 5 + stretch, or 8
+		ld	c,a
+		add	a,5
+		ld	b,a
+		ld	a,(pm2_unit)
+		or	a
+		jr	z,off_tree_out.codes
+		ld	b,8
+off_tree_out.codes:
+		ld	a,b
+		ld	(pw_n),a
+		ld	a,c		; its counts: PO_FREQ + 16 * stretch
+		add	a,a
+		add	a,a
+		add	a,a
+		add	a,a
+		ld	l,a
+		ld	h,0
+		ld	de,PO_FREQ
+		add	hl,de
+		ld	c,b
+		ld	b,0
+		ld	de,OFF_AT
+		call	d_tree
+		ld	hl,(c_len_at)	; the lengths
+		ld	de,OFF_AT
+		add	hl,de
+		ld	(pw_at),hl
+off_tree_out.length:
+		ld	hl,(pw_at)
+		ld	a,(hl)
+		inc	hl
+		ld	(pw_at),hl
+		ld	l,a
+		ld	h,0
+		ld	b,3
+		call	putbits
+		ld	hl,pw_n
+		dec	(hl)
+		jr	nz,off_tree_out.length
+		ret
+
+; pm2_end - the member's last unit, and what a decoder reads at a point
+;   the data ends on.
+;
+;   A member that ends exactly at a unit's end (4096, 8192...) has that
+;   unit sent already, and a decoder reads, there, the next unit's 1 bit:
+;   it gets a 0 (the code tree kept), and after the first unit an offset
+;   tree too, of codes 0 and 1, if there are offset codes.
+;
+; Input:	pm2_syms, pm2_left, pm2_unit, pm2_need; the tables mapped
+; Output:	written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+;		IX
+;		IY
+; Scratch:	none
+
+pm2_end:
+		ld	hl,(pm2_syms)	; symbols left: the last unit
+		ld	a,h
+		or	l
+		jp	nz,pm2_send
+		ld	hl,(pm2_left)	; none: at a unit's end?
+		ld	de,UNIT
+		or	a
+		sbc	hl,de
+		ret	nz
+		ld	a,(pm2_unit)	; (not before the first)
+		or	a
+		ret	z
+		ld	hl,0		; the code tree kept: 0
+		ld	b,1
+		call	putbits
+		ld	a,(pm2_unit)	; after the first unit only: an offset
+		dec	a		;   tree, if there are offset codes
+		ret	nz
+		ld	(ps_st),a
+		ld	a,(pm2_need)
+		or	a
+		ret	z
+		ld	hl,(c_freq_at)	; no counts: codes 0 and 1
+		ld	de,2*PO_FREQ
+		add	hl,de
+		ld	bc,32
+		call	zero
+		jp	off_tree_out
+
+; pm2_start - for -pm2-: the list, the units' counts, and the bit
+;   that comes first and is not used.
+;
+; Input:	none
+; Output:	mtf_order; pm2_left, pm2_unit, pm2_syms; the bit, written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+pm2_start:
+		ld	hl,UNIT
+		ld	(pm2_left),hl
+		ld	hl,0
+		ld	(pm2_syms),hl
+		xor	a
+		ld	(pm2_unit),a
+		ld	de,mtf_order	; the list: PMARC2's groups, in order
+		ld	hl,mtf_groups
+		ld	c,5
+pm2_start.group:
+		ld	a,(hl)		; the first byte, then how many
+		inc	hl
+		ld	b,(hl)
+		inc	hl
+pm2_start.byte:
+		ld	(de),a
+		inc	de
+		inc	a
+		djnz	pm2_start.byte
+		dec	c
+		jr	nz,pm2_start.group
+		ld	hl,0		; the bit not used: 0
+		ld	b,1
+		jp	putbits
+
+; mtf_place - a byte's place in the list, and the byte to its head.
+;
+;   The list is an array, the head first: CPIR finds the byte, its
+;   place 255 less what is left of the count; LDDR moves those before it
+;   one on, and it goes first. As the decoder's list, the same order.
+;
+; Input:	A = the byte
+; Output:	A = its place, 0 to 255; the list
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+mtf_place:
+		ld	hl,mtf_order
+		ld	bc,256
+		cpir			; HL -> after it, C = 255 - its place
+		ld	e,a		; E = the byte
+		ld	a,255
+		sub	c		; A = its place
+		ret	z		; the head already
+		push	af
+		push	de
+		dec	hl		; those before it, one on
+		ld	d,h
+		ld	e,l
+		dec	hl
+		ld	c,a		; B is 0
+		lddr
+		pop	hl		; and it first: DE -> mtf_order
+		ld	a,l
+		ld	(de),a
+		pop	af
+		ret
+
+; mtf_match - a match's bytes, to the list's head, in order.
+;
+; Input:	last_len, s_a: the match, from s_a - 1; the text mapped
+; Output:	the list
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	mm_n
+;		mm_at
+
+mtf_match:
+		ld	hl,(last_len)
+		ld	(mm_n),hl
+		ld	hl,(s_a)
+		dec	hl
+		ld	(mm_at),hl
+mtf_match.byte:
+		ld	hl,(mm_at)
+		call	ring_addr
+		ld	a,(hl)
+		call	mtf_place
+		ld	hl,(mm_at)
+		inc	hl
+		ld	(mm_at),hl
+		ld	hl,(mm_n)
+		dec	hl
+		ld	(mm_n),hl
+		ld	a,h
+		or	l
+		jr	nz,mtf_match.byte
+		ret
 
 ; buf_next - the block's next symbol, from e_at.
 ;
@@ -3615,6 +4337,16 @@ cl_order:	defb	16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15
 rep_16:		defb	16,3,6,2
 rep_17:		defb	17,3,10,3
 rep_18:		defb	18,11,138,7
+; hist_rows		pm2_code: for codes 0 to 7, a place's first and
+;			the bits after the code
+; copy_rows		pm2_code: for codes 23 to 27, a length's first,
+;			less 3, the code and the bits after it
+; mtf_groups		pm2_start: the list's groups, as PMARC2 starts
+;			it: each one's first byte and how many
+;
+hist_rows:	defb	0,3,8,3,16,4,32,5,64,5,96,5,128,6,192,6
+copy_rows:	defb	14,23,3,22,24,3,30,25,5,62,26,6,126,27,7
+mtf_groups:	defb	20h,96,00h,32,0A0h,64,80h,32,0E0h,32
 
 		dseg
 
@@ -3708,8 +4440,25 @@ rep_18:		defb	18,11,138,7
 ; acc			d_compare: dynamic less fixed, 3 bytes
 ; cr_at, cr_n, cr_v	cl_runs: where it is, how many are left, the
 ;			length being repeated
+; pm2_mode		not 0 for a -pm2- member (lh5w_start)
+; pm2_left, pm2_syms	the unit: its bytes still to come, below 0 once
+;			a match runs past it; its symbols
+; pm2_unit		0 for the first unit, 1 for the second, 2 after
+; pm2_need		not 0 when the code tree has ten codes or more:
+;			offset trees
+; ps_o, ps_st, ps_cnt	pm2_send: the output so far in the unit, the
+;			stretch, the symbols left
+; ps_m, ps_code, ps_xv, ps_xb, ps_n, ps_d, ps_oc, ps_ob
+;			pm2_code: a match or not, the code, the bits after
+;			it and how many, the bytes, the distance less 1,
+;			its offset code and its bits
+; pw_n, pw_min, pw_lb, pw_at
+;			code_tree_out, off_tree_out: how many lengths, the
+;			shortest, the bits each, where the next is
+; mm_n, mm_at		mtf_match: the bytes left, the next one's position
 ; outbuf		the bytes for the archive: OUT_SIZE, in the buffers
 ;			segment
+; mtf_order		-pm2-'s list, the head first, in the buffers segment
 ;
 tables_ready:	defs	1
 text_fp:	defs	4
@@ -3826,10 +4575,33 @@ acc:		defs	3
 cr_at:		defs	2
 cr_n:		defs	2
 cr_v:		defs	1
+pm2_mode:	defs	1
+pm2_left:	defs	2
+pm2_syms:	defs	2
+pm2_unit:	defs	1
+pm2_need:	defs	1
+ps_o:		defs	2
+ps_st:		defs	1
+ps_cnt:		defs	2
+ps_m:		defs	1
+ps_code:	defs	1
+ps_xv:		defs	2
+ps_xb:		defs	1
+ps_n:		defs	2
+ps_d:		defs	2
+ps_oc:		defs	1
+ps_ob:		defs	1
+pw_n:		defs	1
+pw_min:		defs	1
+pw_lb:		defs	1
+pw_at:		defs	2
+mm_n:		defs	2
+mm_at:		defs	2
 
 		dseg	buffers
 qh:		defs	2*MAX_MATCH
 outbuf:		defs	OUT_SIZE
+mtf_order:	defs	256
 
 		end
 

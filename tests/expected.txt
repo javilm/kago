@@ -1000,12 +1000,12 @@ Skipping SUB: PMA archives have no directories.
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
         18         18 -pm0-  2001-02-03 04:05 A.TXT
-     70000      70000 -pm0-  1980-01-01 00:00 BIG.DAT
+      4846      70000 -pm2-  1980-01-01 00:00 BIG.DAT
         12         12 -pm0-  2100-03-01 00:00 RO.TXT
          9          9 -pm0-  2106-02-07 06:28 HID.TXT
-        23         23 -pm0-  2099-12-31 23:59 A$B.TXT
+        22         23 -pm2-  2099-12-31 23:59 A$B.TXT
 ---------- ---------- ------                  ------------
-     70062      70062        5 files
+      4907      70062        5 files
 --- unkago /O /D:..\pmout ..\kp1.pma
 Extracting A.TXT OK
 Extracting BIG.DAT OK
@@ -1023,13 +1023,13 @@ Replacing A.TXT OK
 --- unkago /L ..\kp1.pma
     Packed   Original Method Date             Name
 ---------- ---------- ------ ---------------- ------------
-     70000      70000 -pm0-  1980-01-01 00:00 BIG.DAT
+      4846      70000 -pm2-  1980-01-01 00:00 BIG.DAT
         12         12 -pm0-  2100-03-01 00:00 RO.TXT
          9          9 -pm0-  2106-02-07 06:28 HID.TXT
-        23         23 -pm0-  2099-12-31 23:59 A$B.TXT
+        22         23 -pm2-  2099-12-31 23:59 A$B.TXT
         18         18 -pm0-  2001-02-03 04:05 A.TXT
 ---------- ---------- ------                  ------------
-     70062      70062        5 files
+      4907      70062        5 files
 === KAGO PACKING
 --- kago k7.lzh kin\*.*
 Adding KIN\A.TXT OK
@@ -1131,6 +1131,28 @@ Extracting EDGE\HALF.DAT OK
 Extracting EDGE\ALL.DAT OK
 Extracting EDGE\NOISE.DAT OK
 Extracting EDGE\FIXED.DAT OK
+--- kago ..\kp3.pma *.*
+Adding ONE.DAT OK
+Adding HALF.DAT OK
+Adding ALL.DAT OK
+Adding NOISE.DAT OK
+Adding FIXED.DAT OK
+--- unkago /L kp3.pma
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+        35       3000 -pm2-  2026-10-08 12:00 ONE.DAT
+       196       8192 -pm2-  2026-10-08 12:00 HALF.DAT
+       372      10240 -pm2-  2026-10-08 12:00 ALL.DAT
+      4096       4096 -pm0-  2026-10-08 12:00 NOISE.DAT
+        27         54 -pm2-  2026-10-08 12:00 FIXED.DAT
+---------- ---------- ------                  ------------
+      4726      25582        5 files
+--- unkago /O /D:ppout kp3.pma
+Extracting ONE.DAT OK
+Extracting HALF.DAT OK
+Extracting ALL.DAT OK
+Extracting NOISE.DAT OK
+Extracting FIXED.DAT OK
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

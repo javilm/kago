@@ -502,7 +502,8 @@ dir /h tests\out\zout\kin>>tests\dates.txt
 dir /h tests\out\zout\kin\sub>>tests\dates.txt
 
 rem KAGO PMA runs in TESTS\OUT\KIN, KIN's files as KAGO ARCHIVING
-rem left them: they go into KP1.PMA, stored (-pm0-), but EMPTY.DAT,
+rem left them: they go into KP1.PMA, packed (-pm2-) or, when that does
+rem not make them smaller, stored (-pm0-), but EMPTY.DAT,
 rem as PMEXT cannot read an empty member, and SUB, as PMA has no
 rem directories; UNKAGO lists it and extracts it into
 rem PMOUT, for the Mac to compare. Then the refusals, a directory
@@ -540,14 +541,16 @@ rem holds the encoders' edge cases, extracted into EDGE: one byte over
 rem and over (ONE.DAT), runs of 128 and 256 different bytes (HALF.DAT,
 rem ALL.DAT), noise, which does not get smaller (NOISE.DAT), and a short
 rem text deflate sends with its fixed codes (FIXED.DAT). They go into
-rem K8.LZH, listed and extracted into POUT too, and into Z8.ZIP,
-rem deflate, listed and extracted into ZPOUT.
+rem K8.LZH, listed and extracted into POUT too, into Z8.ZIP, deflate,
+rem listed and extracted into ZPOUT, and into KP3.PMA, -pm2-, from inside
+rem EDGE, as PMA has no directories, listed and extracted into PPOUT.
 echo === KAGO PACKING>>tests\results.txt
 attrib -r tests\out\pout\kin\ro.txt
 cd tests\out
 del k7.lzh
 del k8.lzh
 del z8.zip
+del kp3.pma
 echo --- kago k7.lzh kin\*.*>>..\results.txt
 ..\..\build\kago k7.lzh kin\*.*>>..\results.txt
 echo --- unkago /L k7.lzh>>..\results.txt
@@ -572,6 +575,14 @@ echo --- unkago /L z8.zip>>..\results.txt
 ..\..\build\unkago /L z8.zip>>..\results.txt
 echo --- unkago /O /D:zpout z8.zip>>..\results.txt
 ..\..\build\unkago /O /D:zpout z8.zip>>..\results.txt
+cd edge
+echo --- kago ..\kp3.pma *.*>>..\..\results.txt
+..\..\..\build\kago ..\kp3.pma *.*>>..\..\results.txt
+cd ..
+echo --- unkago /L kp3.pma>>..\results.txt
+..\..\build\unkago /L kp3.pma>>..\results.txt
+echo --- unkago /O /D:ppout kp3.pma>>..\results.txt
+..\..\build\unkago /O /D:ppout kp3.pma>>..\results.txt
 cd ..\..
 
 rem MEMORY takes mapper memory with a RAM disk, and asks for more. On a
