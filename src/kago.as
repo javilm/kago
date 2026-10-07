@@ -79,6 +79,8 @@ SMALL_SEGS	equ	3		;   at full strength, and small; ZIP
 ;   A bad switch ends with .IOPT, and COMMAND2 prints its own message
 ;   for it: *** Invalid option. Otherwise /? prints the usage, /V the
 ;   banner alone; /? is tested before /V, so with both the usage wins.
+;   Before all of it, without /Q, the banner and a blank line: the first
+;   thing KAGO prints on every run, errors included (show_banner).
 ;
 ;   Then the archive: the first word that is not a switch, and its
 ;   format (archive_format). With no archive named, the usage; with no
@@ -104,6 +106,9 @@ SMALL_SEGS	equ	3		;   at full strength, and small; ZIP
 ; Scratch:	none
 
 main:
+		ld	c,"Q"		; no /Q: the banner, before
+		call	switch_given	;   anything else
+		call	nc,show_banner
 		call	dos_version	; CY set = not MSX-DOS2
 		jp	c,main.need_dos2	; too far for jr
 		call	heapinit	; MapperHeap: CY set = no mapper
@@ -117,7 +122,7 @@ main:
 		ld	c,"V"
 		call	switch_given
 		jr	nc,main.archive
-		print	msg_banner	; /V: the banner, and nothing else
+		call	quiet_banner	; /V: the banner, and nothing else
 		dos	_TERM0
 
 main.archive:
@@ -276,7 +281,7 @@ main.said:
 		dos	_TERM0
 
 main.usage:
-		print	msg_banner
+		call	quiet_banner
 		print	msg_usage
 		dos	_TERM0
 
@@ -291,6 +296,28 @@ main.no_mapper:
 main.need_dos2:
 		print	msg_need_dos2	; _STROUT: MSX-DOS1 has it too
 		dos	_TERM0		; function 00h, in MSX-DOS1 too
+
+; quiet_banner, show_banner - the banner, and a blank line after it.
+;
+;   Without /Q it comes first, before anything else KAGO prints, errors
+;   included (main: show_banner). /? and /V print it with /Q too:
+;   quiet_banner prints it only if /Q kept it from being printed then.
+;
+; Input:	the command line
+; Output:	written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+quiet_banner:
+		ld	c,"Q"		; /Q: not printed at the start
+		call	switch_given
+		ret	nc
+show_banner:
+		print	msg_banner
+		ret
 
 ; archive_format - the archive's format, from /F: or the extension.
 ;
@@ -2464,7 +2491,8 @@ fail_closed:
 ;
 ; switch_letters	the switches KAGO takes, upper case, ending in 0
 ; msg_need_dos2		the refusal under MSX-DOS1
-; msg_banner		the name, version, copyright and web address
+; msg_banner		the name, version, copyright and web address,
+;			then a blank line
 ; msg_usage		the rest of the usage, after the banner
 ; msg_no_mapper		heapinit found no mapper support
 ; msg_no_memory		no mapper memory left for a list
@@ -2500,14 +2528,14 @@ switch_letters:	defb	"AFYQV0?",0
 msg_need_dos2:	defb	"ERROR: KAGO needs MSX-DOS2 or Nextor."
 		defb	CHR_CR,CHR_LF,"$"
 msg_banner:
-		defb	"KAGO LZH/PMA/ZIP Compressor v0.1.0"
+		defb	"KAGO LZH/PMA/ZIP Compressor v1.0.0"
 		defb	CHR_CR,CHR_LF
 		defb	"Copyright (C) 2026 Javier Lavandeira"
 		defb	CHR_CR,CHR_LF
-		defb	"https://github.com/javilm/kago"
+		defb	"https://kago.tools"
+		defb	CHR_CR,CHR_LF
 		defb	CHR_CR,CHR_LF,"$"
 msg_usage:
-		defb	CHR_CR,CHR_LF
 		defb	"Usage: KAGO [switches] archive files..."
 		defb	CHR_CR,CHR_LF
 		defb	CHR_CR,CHR_LF
@@ -2521,7 +2549,7 @@ msg_usage:
 		defb	CHR_CR,CHR_LF
 		defb	"  /Y      proceed without asking when memory is short"
 		defb	CHR_CR,CHR_LF
-		defb	"  /Q      quiet: no progress"
+		defb	"  /Q      quiet: no banner, no progress"
 		defb	CHR_CR,CHR_LF
 		defb	"  /V      the banner above, and nothing else"
 		defb	CHR_CR,CHR_LF

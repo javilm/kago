@@ -1,9 +1,9 @@
 TSUZURA TEST RUN
 === KAGO
 --- kago
-KAGO LZH/PMA/ZIP Compressor v0.1.0
+KAGO LZH/PMA/ZIP Compressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
 
 Usage: KAGO [switches] archive files...
 
@@ -12,7 +12,7 @@ Usage: KAGO [switches] archive files...
           the archive name's extension decides
   /0      store the files, without packing them
   /Y      proceed without asking when memory is short
-  /Q      quiet: no progress
+  /Q      quiet: no banner, no progress
   /V      the banner above, and nothing else
   /?      this text
 
@@ -22,9 +22,9 @@ Files may use * and ?.
 Skipping file.txt: File not found
 Nothing to add: archive.zip was not written.
 --- kago /Q /Y
-KAGO LZH/PMA/ZIP Compressor v0.1.0
+KAGO LZH/PMA/ZIP Compressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
 
 Usage: KAGO [switches] archive files...
 
@@ -33,7 +33,7 @@ Usage: KAGO [switches] archive files...
           the archive name's extension decides
   /0      store the files, without packing them
   /Y      proceed without asking when memory is short
-  /Q      quiet: no progress
+  /Q      quiet: no banner, no progress
   /V      the banner above, and nothing else
   /?      this text
 
@@ -43,9 +43,9 @@ Files may use * and ?.
 Which format? Name the archive .LZH, .LHA, .PMA or
 .ZIP, or use /F:LZH, /F:PMA or /F:ZIP.
 --- kago /?
-KAGO LZH/PMA/ZIP Compressor v0.1.0
+KAGO LZH/PMA/ZIP Compressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
 
 Usage: KAGO [switches] archive files...
 
@@ -54,24 +54,26 @@ Usage: KAGO [switches] archive files...
           the archive name's extension decides
   /0      store the files, without packing them
   /Y      proceed without asking when memory is short
-  /Q      quiet: no progress
+  /Q      quiet: no banner, no progress
   /V      the banner above, and nothing else
   /?      this text
 
 Files may use * and ?.
 
 --- kago /v
-KAGO LZH/PMA/ZIP Compressor v0.1.0
+KAGO LZH/PMA/ZIP Compressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
+
 --- kago /V archive.lzh
-KAGO LZH/PMA/ZIP Compressor v0.1.0
+KAGO LZH/PMA/ZIP Compressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
+
 --- kago /V /?
-KAGO LZH/PMA/ZIP Compressor v0.1.0
+KAGO LZH/PMA/ZIP Compressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
 
 Usage: KAGO [switches] archive files...
 
@@ -80,7 +82,7 @@ Usage: KAGO [switches] archive files...
           the archive name's extension decides
   /0      store the files, without packing them
   /Y      proceed without asking when memory is short
-  /Q      quiet: no progress
+  /Q      quiet: no banner, no progress
   /V      the banner above, and nothing else
   /?      this text
 
@@ -100,9 +102,9 @@ Files may use * and ?.
 *** Invalid option
 === UNKAGO
 --- unkago
-UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
 
 Usage: UNKAGO [switches] archive [members...]
 
@@ -110,7 +112,7 @@ Usage: UNKAGO [switches] archive [members...]
            B:  B:\TEST  \TEMP  TEMP\FILES
   /L       list the archive, extract nothing
   /O       overwrite files that already exist
-  /Q       quiet: no progress
+  /Q       quiet: no banner, no progress
   /V       the banner above, and nothing else
   /?       this text
 
@@ -124,9 +126,9 @@ extracts everything under it.
 
 *** Missing parameter
 --- unkago /?
-UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
 
 Usage: UNKAGO [switches] archive [members...]
 
@@ -134,7 +136,7 @@ Usage: UNKAGO [switches] archive [members...]
            B:  B:\TEST  \TEMP  TEMP\FILES
   /L       list the archive, extract nothing
   /O       overwrite files that already exist
-  /Q       quiet: no progress
+  /Q       quiet: no banner, no progress
   /V       the banner above, and nothing else
   /?       this text
 
@@ -142,9 +144,10 @@ Members may use * and ?. Naming a directory
 extracts everything under it.
 
 --- unkago /V x.lzh
-UNKAGO LZH/PMA/ZIP Decompressor v0.1.0
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
 Copyright (C) 2026 Javier Lavandeira
-https://github.com/javilm/kago
+https://kago.tools
+
 --- unkago /F:LZH x.lzh
 
 *** Invalid option
@@ -1153,6 +1156,68 @@ Extracting HALF.DAT OK
 Extracting ALL.DAT OK
 Extracting NOISE.DAT OK
 Extracting FIXED.DAT OK
+=== BANNER
+--- kago /V
+KAGO LZH/PMA/ZIP Compressor v1.0.0
+Copyright (C) 2026 Javier Lavandeira
+https://kago.tools
+
+--- kago /Q /V
+KAGO LZH/PMA/ZIP Compressor v1.0.0
+Copyright (C) 2026 Javier Lavandeira
+https://kago.tools
+
+--- kago /X
+KAGO LZH/PMA/ZIP Compressor v1.0.0
+Copyright (C) 2026 Javier Lavandeira
+https://kago.tools
+
+
+*** Invalid option
+--- kago ..\kb.lzh a.txt
+KAGO LZH/PMA/ZIP Compressor v1.0.0
+Copyright (C) 2026 Javier Lavandeira
+https://kago.tools
+
+Adding A.TXT OK
+--- unkago /L kp1.pma
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+Copyright (C) 2026 Javier Lavandeira
+https://kago.tools
+
+    Packed   Original Method Date             Name
+---------- ---------- ------ ---------------- ------------
+      4846      70000 -pm2-  1980-01-01 00:00 BIG.DAT
+        12         12 -pm0-  2100-03-01 00:00 RO.TXT
+         9          9 -pm0-  2106-02-07 06:28 HID.TXT
+        22         23 -pm2-  2099-12-31 23:59 A$B.TXT
+        18         18 -pm0-  2001-02-03 04:05 A.TXT
+---------- ---------- ------                  ------------
+      4907      70062        5 files
+--- unkago /O /D:bout kb.lzh
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+Copyright (C) 2026 Javier Lavandeira
+https://kago.tools
+
+Extracting A.TXT OK
+--- unkago
+UNKAGO LZH/PMA/ZIP Decompressor v1.0.0
+Copyright (C) 2026 Javier Lavandeira
+https://kago.tools
+
+Usage: UNKAGO [switches] archive [members...]
+
+  /D:path  extract into path, made if missing:
+           B:  B:\TEST  \TEMP  TEMP\FILES
+  /L       list the archive, extract nothing
+  /O       overwrite files that already exist
+  /Q       quiet: no banner, no progress
+  /V       the banner above, and nothing else
+  /?       this text
+
+Members may use * and ?. Naming a directory
+extracts everything under it.
+
 === MAPTEST
 --- maptest
 MAPTEST - a mapper block: allocate, write, read, free

@@ -49,6 +49,8 @@ PATH_SEPARATOR	equ	5Ch		; "\", the yen sign on a Japanese MSX
 ;   A bad switch ends with .IOPT, and COMMAND2 prints its own message
 ;   for it: *** Invalid option. Otherwise /? prints the usage and /V
 ;   the banner alone; /? is tested first, so with both the usage wins.
+;   Before all of it, without /Q, the banner and a blank line: the first
+;   thing UNKAGO prints on every run, errors included (show_banner).
 ;
 ;   Then the archive: the first word that is not a switch. With /L it
 ;   is listed; without /L it is extracted, /O allowing existing files
@@ -63,6 +65,9 @@ PATH_SEPARATOR	equ	5Ch		; "\", the yen sign on a Japanese MSX
 ; Scratch:	none
 
 main:
+		ld	c,"Q"		; no /Q: the banner, before
+		call	switch_given	;   anything else
+		call	nc,show_banner
 		call	dos_version	; CY set = not MSX-DOS2
 		jp	c,main.need_dos2	; too far for jr
 		call	heapinit	; MapperHeap: CY set = no mapper
@@ -76,7 +81,7 @@ main:
 		ld	c,"V"
 		call	switch_given
 		jr	nc,main.archive
-		print	msg_banner	; /V: the banner, and nothing else
+		call	quiet_banner	; /V: the banner, and nothing else
 		dos	_TERM0
 
 main.archive:
@@ -127,7 +132,7 @@ main.no_path:
 		dos	_TERM
 
 main.usage:
-		print	msg_banner
+		call	quiet_banner
 		print	msg_usage
 		dos	_TERM0
 
@@ -142,6 +147,28 @@ main.no_mapper:
 main.need_dos2:
 		print	msg_need_dos2	; _STROUT: MSX-DOS1 has it too
 		dos	_TERM0		; function 00h, in MSX-DOS1 too
+
+; quiet_banner, show_banner - the banner, and a blank line after it.
+;
+;   Without /Q it comes first, before anything else UNKAGO prints, errors
+;   included (main: show_banner). /? and /V print it with /Q too:
+;   quiet_banner prints it only if /Q kept it from being printed then.
+;
+; Input:	the command line
+; Output:	written
+; Modifies:	AF
+;		BC
+;		DE
+;		HL
+; Scratch:	none
+
+quiet_banner:
+		ld	c,"Q"		; /Q: not printed at the start
+		call	switch_given
+		ret	nc
+show_banner:
+		print	msg_banner
+		ret
 
 ; collect_names - the member names given after the archive's name.
 ;
@@ -2497,7 +2524,8 @@ print_totals.word:
 ;
 ; switch_letters	the switches UNKAGO takes, upper case, ending in 0
 ; msg_need_dos2		the refusal under MSX-DOS1
-; msg_banner		the name, version, copyright and web address
+; msg_banner		the name, version, copyright and web address,
+;			then a blank line
 ; msg_usage		the rest of the usage, after the banner
 ; msg_crlf		the end of a line
 ; msg_not_lzh		no member could be read
@@ -2534,14 +2562,14 @@ switch_letters:	defb	"DLOQV?",0
 msg_need_dos2:	defb	"ERROR: UNKAGO needs MSX-DOS2 or Nextor."
 		defb	CHR_CR,CHR_LF,"$"
 msg_banner:
-		defb	"UNKAGO LZH/PMA/ZIP Decompressor v0.1.0"
+		defb	"UNKAGO LZH/PMA/ZIP Decompressor v1.0.0"
 		defb	CHR_CR,CHR_LF
 		defb	"Copyright (C) 2026 Javier Lavandeira"
 		defb	CHR_CR,CHR_LF
-		defb	"https://github.com/javilm/kago"
+		defb	"https://kago.tools"
+		defb	CHR_CR,CHR_LF
 		defb	CHR_CR,CHR_LF,"$"
 msg_usage:
-		defb	CHR_CR,CHR_LF
 		defb	"Usage: UNKAGO [switches] archive [members...]"
 		defb	CHR_CR,CHR_LF
 		defb	CHR_CR,CHR_LF
@@ -2553,7 +2581,7 @@ msg_usage:
 		defb	CHR_CR,CHR_LF
 		defb	"  /O       overwrite files that already exist"
 		defb	CHR_CR,CHR_LF
-		defb	"  /Q       quiet: no progress"
+		defb	"  /Q       quiet: no banner, no progress"
 		defb	CHR_CR,CHR_LF
 		defb	"  /V       the banner above, and nothing else"
 		defb	CHR_CR,CHR_LF
